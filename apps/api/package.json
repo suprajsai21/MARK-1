@@ -1,0 +1,20 @@
+{
+  "name": "@mark-1/api",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "lint": "eslint src",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run --passWithNoTests",
+    "build": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@mark-1/contracts": "workspace:*",
+    "@mark-1/db": "workspace:*",
+    "fastify": "5.6.2"
+  },
+  "devDependencies": {
+    "vitest": "3.2.4"
+  }
+}

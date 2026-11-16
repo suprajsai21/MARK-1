@@ -1,0 +1,12 @@
+{
+  "name": "@mark-1/e2e",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node -e \"console.log('E2E tests not yet implemented')\""
+  },
+  "devDependencies": {
+    "playwright": "1.56.1"
+  }
+}

@@ -36,6 +36,9 @@ export class RateLimitBuckets {
     const existing = this.buckets.get(key);
     if (!existing || existing.resetAt <= now) {
       this.prune(now);
+      if (this.buckets.size >= this.maxKeys) {
+        return false;
+      }
       this.buckets.set(key, { count: 1, resetAt: now + this.windowMs });
       return true;
     }
@@ -48,11 +51,6 @@ export class RateLimitBuckets {
       if (bucket.resetAt <= now) {
         this.buckets.delete(key);
       }
-    }
-    while (this.buckets.size >= this.maxKeys) {
-      const oldest = this.buckets.keys().next();
-      if (oldest.done) return;
-      this.buckets.delete(oldest.value);
     }
   }
 }

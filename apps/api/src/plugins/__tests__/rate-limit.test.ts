@@ -33,4 +33,15 @@ describe('auth rate limit buckets', () => {
     buckets.hit('fresh', 5_000);
     expect(buckets.size).toBe(1);
   });
+
+  it('rejects new keys at capacity instead of evicting active counters', () => {
+    const buckets = new RateLimitBuckets({ max: 1, windowMs: 10_000, maxKeys: 2 });
+    expect(buckets.hit('a', 0)).toBe(true);
+    expect(buckets.hit('b', 0)).toBe(true);
+
+    // A new key must not cost 'a' its counter; fail closed instead.
+    expect(buckets.hit('c', 1)).toBe(false);
+    expect(buckets.size).toBe(2);
+    expect(buckets.hit('a', 2)).toBe(false);
+  });
 });

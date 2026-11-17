@@ -119,6 +119,8 @@ export class MemoryAuthRepository implements AuthRepository {
 
 export { PrismaAuthRepository, toStoredUser } from './prisma-auth-repository.js';
 export type { AuthDatabase, PrismaUserRecord } from './prisma-auth-repository.js';
+export { PrismaLinkDatabase } from './prisma-link-database.js';
+export type { LinkDatabaseClient as PrismaLinkDatabaseClient } from './prisma-link-database.js';
 
 /** Creates the durable client from a configured PostgreSQL URL. */
 export function createPrismaClient(databaseUrl: string): PrismaClient {

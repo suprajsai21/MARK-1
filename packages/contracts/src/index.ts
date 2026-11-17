@@ -8,5 +8,12 @@ export type { ApiError, AuthUser, LoginInput, RegisterInput } from './auth.js';
 export {
   CompleteLinkInputSchema,
   CreateLinkChallengeInputSchema,
+  LinkPolicySchema,
+  UnlinkLinkInputSchema,
 } from './links.js';
-export type { CompleteLinkInput, CreateLinkChallengeInput } from './links.js';
+export type {
+  CompleteLinkInput,
+  CreateLinkChallengeInput,
+  LinkPolicy,
+  UnlinkLinkInput,
+} from './links.js';

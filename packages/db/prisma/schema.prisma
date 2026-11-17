@@ -23,6 +23,9 @@ model User {
   verificationTokens  EmailVerificationToken[]
   passwordResetTokens PasswordResetToken[]
   sessions            Session[]
+  linkChallenges      LinkChallenge[]
+  accountLinks        AccountLink[]
+  linkHistories       LinkHistory[]
 }
 
 model EmailVerificationToken {
@@ -59,4 +62,62 @@ model Session {
 
   @@index([userId])
   @@index([expiresAt])
+}
+
+model LinkChallenge {
+  id            String   @id @db.Uuid
+  userId        String   @db.Uuid
+  integrationId String   @db.VarChar(64)
+  challengeHash String
+  expiresAt     DateTime
+  createdAt     DateTime @default(now())
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model AccountLink {
+  id                  String   @id @default(uuid()) @db.Uuid
+  userId              String   @db.Uuid
+  integrationId       String   @db.VarChar(64)
+  externalSubjectHash String   @db.VarChar(64)
+  createdAt           DateTime @default(now())
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, integrationId])
+  @@unique([integrationId, externalSubjectHash])
+  @@index([userId])
+}
+
+/** Retained after a link is removed so the relink cooldown survives the deletion. */
+model LinkHistory {
+  id            String   @id @default(uuid()) @db.Uuid
+  userId        String   @db.Uuid
+  integrationId String   @db.VarChar(64)
+  unlinkedAt    DateTime @default(now())
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, integrationId, unlinkedAt])
+  @@index([unlinkedAt])
+}
+
+model LinkAudit {
+  id        String   @id @default(uuid()) @db.Uuid
+  actorId   String   @db.Uuid
+  action    String   @db.VarChar(32)
+  targetId  String   @db.VarChar(64)
+  createdAt DateTime @default(now())
+
+  @@index([actorId])
+  @@index([createdAt])
+}
+
+model LinkPolicySetting {
+  id                        Int      @id @default(1)
+  relinkCooldownHours       Int      @default(168)
+  requiresReverification    Boolean  @default(true)
+  adminTransferApprovalRequired Boolean @default(true)
+  updatedAt                 DateTime @default(now()) @updatedAt
+  updatedById               String?  @db.Uuid
 }

@@ -1,10 +1,13 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
-
-function App() {
-  return <main><h1>MARK-1</h1><p>Customer portal foundation</p></main>;
-}
+import { PortalApi } from './api.js';
+import { CustomerPortal } from './portal.js';
+import './style.css';
 
 const root = document.getElementById('root');
 if (!root) throw new Error('Missing root element');
-createRoot(root).render(<React.StrictMode><App /></React.StrictMode>);
+createRoot(root).render(
+  <React.StrictMode>
+    <CustomerPortal api={new PortalApi()} />
+  </React.StrictMode>,
+);

@@ -62,14 +62,14 @@ const resetSchema = {
   },
 };
 
-export async function registerAuthRoutes(
+export function registerAuthRoutes(
   app: FastifyInstance,
   options: {
     auth: AuthService;
     allowedOrigin: string;
     rateLimit?: { max: number; windowMs: number };
   },
-): Promise<void> {
+): void {
   registerAuthRateLimits(app, options.rateLimit ?? { max: 30, windowMs: 60_000 });
 
   const originGuard = (request: FastifyRequest, reply: FastifyReply): boolean => {

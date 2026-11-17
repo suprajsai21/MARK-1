@@ -1,5 +1,6 @@
-export interface StoredUser {
-  id: string;
+import { PrismaClient } from '@prisma/client';
+
+export interface StoredUser {  id: string;
   email: string;
   passwordHash: string;
   emailVerified: boolean;
@@ -114,4 +115,12 @@ export class MemoryAuthRepository implements AuthRepository {
   async deleteSession(tokenHash: string): Promise<void> {
     this.sessions.delete(tokenHash);
   }
+}
+
+export { PrismaAuthRepository, toStoredUser } from './prisma-auth-repository.js';
+export type { AuthDatabase, PrismaUserRecord } from './prisma-auth-repository.js';
+
+/** Creates the durable client from a configured PostgreSQL URL. */
+export function createPrismaClient(databaseUrl: string): PrismaClient {
+  return new PrismaClient({ datasourceUrl: databaseUrl });
 }

@@ -1,0 +1,15 @@
+{
+  "name": "@mark-1/extension",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node -e \"console.log('Extension scaffold ready for implementation')\""
+  },
+  "dependencies": {
+    "@mark-1/contracts": "workspace:*"
+  },
+  "devDependencies": {
+    "vitest": "3.2.4"
+  }
+}

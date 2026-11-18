@@ -1,0 +1,178 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  customer
+  admin
+}
+
+model User {
+  id                  String                   @id @default(uuid()) @db.Uuid
+  email               String                   @unique @db.VarChar(254)
+  passwordHash        String
+  emailVerifiedAt     DateTime?
+  role                UserRole                 @default(customer)
+  createdAt           DateTime                 @default(now())
+  updatedAt           DateTime                 @updatedAt
+  verificationTokens  EmailVerificationToken[]
+  passwordResetTokens PasswordResetToken[]
+  sessions            Session[]
+  linkChallenges      LinkChallenge[]
+  accountLinks        AccountLink[]
+  linkHistories       LinkHistory[]
+  oauthAuthorizationCodes OAuthAuthorizationCode[]
+  oauthTokenFamilies   OAuthTokenFamily[]
+}
+
+model EmailVerificationToken {
+  id        String   @id @default(uuid()) @db.Uuid
+  tokenHash String   @unique
+  userId    String   @db.Uuid
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model PasswordResetToken {
+  id        String   @id @default(uuid()) @db.Uuid
+  tokenHash String   @unique
+  userId    String   @db.Uuid
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model Session {
+  id        String   @id @default(uuid()) @db.Uuid
+  tokenHash String   @unique
+  userId    String   @db.Uuid
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model LinkChallenge {
+  id            String   @id @db.Uuid
+  userId        String   @db.Uuid
+  integrationId String   @db.VarChar(64)
+  challengeHash String
+  expiresAt     DateTime
+  createdAt     DateTime @default(now())
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model AccountLink {
+  id                  String   @id @default(uuid()) @db.Uuid
+  userId              String   @db.Uuid
+  integrationId       String   @db.VarChar(64)
+  externalSubjectHash String   @db.VarChar(64)
+  createdAt           DateTime @default(now())
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, integrationId])
+  @@unique([integrationId, externalSubjectHash])
+  @@index([userId])
+}
+
+/** Retained after a link is removed so the relink cooldown survives the deletion. */
+model LinkHistory {
+  id            String   @id @default(uuid()) @db.Uuid
+  userId        String   @db.Uuid
+  integrationId       String   @db.VarChar(64)
+  externalSubjectHash String   @db.VarChar(64)
+  unlinkedAt           DateTime @default(now())
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, integrationId, unlinkedAt])
+  @@index([integrationId, externalSubjectHash, unlinkedAt])
+  @@index([unlinkedAt])
+}
+
+model LinkAudit {
+  id        String   @id @default(uuid()) @db.Uuid
+  actorId   String   @db.Uuid
+  action    String   @db.VarChar(32)
+  targetId  String   @db.VarChar(64)
+  createdAt DateTime @default(now())
+
+  @@index([actorId])
+  @@index([createdAt])
+}
+
+model OAuthAuthorizationCode {
+  codeHash     String   @id @db.VarChar(64)
+  userId       String   @db.Uuid
+  clientId     String   @db.VarChar(256)
+  redirectUri  String   @db.VarChar(2048)
+  codeChallenge String  @db.VarChar(43)
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([expiresAt])
+  @@index([userId])
+}
+
+model OAuthTokenFamily {
+  id        String   @id @db.VarChar(32)
+  userId    String   @db.Uuid
+  clientId  String   @db.VarChar(256)
+  revokedAt DateTime?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessTokens OAuthAccessToken[]
+  refreshTokens OAuthRefreshToken[]
+
+  @@index([userId, clientId])
+  @@index([revokedAt])
+}
+
+model OAuthAccessToken {
+  tokenHash String          @id @db.VarChar(64)
+  familyId  String          @db.VarChar(32)
+  expiresAt DateTime
+  createdAt DateTime        @default(now())
+  family    OAuthTokenFamily @relation(fields: [familyId], references: [id], onDelete: Cascade)
+
+  @@index([familyId])
+  @@index([expiresAt])
+}
+
+model OAuthRefreshToken {
+  tokenHash String          @id @db.VarChar(64)
+  familyId  String          @db.VarChar(32)
+  expiresAt DateTime
+  consumedAt DateTime?
+  createdAt DateTime        @default(now())
+  family    OAuthTokenFamily @relation(fields: [familyId], references: [id], onDelete: Cascade)
+
+  @@index([familyId])
+  @@index([expiresAt])
+}
+
+model LinkPolicySetting {
+  id                        Int      @id @default(1)
+  relinkCooldownHours       Int      @default(168)
+  requiresReverification    Boolean  @default(true)
+  adminTransferApprovalRequired Boolean @default(true)
+  updatedAt                 DateTime @default(now()) @updatedAt
+  updatedById               String?  @db.Uuid
+}

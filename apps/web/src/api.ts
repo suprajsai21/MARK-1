@@ -70,6 +70,37 @@ export class PortalApi {
     });
   }
 
+  /** Reads validated consent metadata. The server issues no code from this call. */
+  async oauthConsentInfo(input: {
+    clientId: string;
+    redirectUri: string;
+    codeChallenge: string;
+    state?: string;
+  }): Promise<{ clientId: string; redirectUri: string; consentRequired: true }> {
+    const query = new URLSearchParams({
+      client_id: input.clientId,
+      redirect_uri: input.redirectUri,
+      response_type: 'code',
+      code_challenge: input.codeChallenge,
+      code_challenge_method: 'S256',
+      ...(input.state === undefined ? {} : { state: input.state }),
+    });
+    return this.request(`/v1/oauth/authorize?${query.toString()}`);
+  }
+
+  /** Explicit customer consent. Only this call may mint an authorization code. */
+  async authorizeExtension(input: {
+    clientId: string;
+    redirectUri: string;
+    codeChallenge: string;
+    state?: string;
+  }): Promise<{ redirectUrl: string }> {
+    return this.request('/v1/oauth/authorize', {
+      method: 'POST',
+      body: JSON.stringify({ ...input, consented: true }),
+    });
+  }
+
   async links(): Promise<{ links: AccountLink[] }> {
     return this.request('/v1/links');
   }

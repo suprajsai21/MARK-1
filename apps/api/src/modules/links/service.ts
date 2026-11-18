@@ -38,13 +38,14 @@ export interface LinkDatabase {
   findLinkByUserIntegration(userId: string, integrationId: string): Promise<StoredLink | null>;
   findLinkByIntegrationSubject(integrationId: string, externalSubjectHash: string): Promise<StoredLink | null>;
   findLinkById(id: string): Promise<StoredLink | null>;
-  createLink(record: StoredLink): Promise<void>;
+  createLink(record: StoredLink, audit: AuditRecord, now: Date): Promise<void>;
   listLinks(userId: string): Promise<StoredLink[]>;
-  deleteLink(id: string, now: Date): Promise<StoredLink | null>;
+  deleteLink(id: string, now: Date, audit: AuditRecord): Promise<StoredLink | null>;
   lastUnlinkedAt(userId: string, integrationId: string): Promise<Date | null>;
-  createAudit(record: AuditRecord): Promise<void>;
+  /** Most recent unlink of this external identity, whoever held it, so transfers cannot skip the policy. */
+  lastUnlinkedSubject(integrationId: string, externalSubjectHash: string): Promise<{ userId: string; unlinkedAt: Date } | null>;
   getPolicy(): Promise<LinkPolicy>;
-  setPolicy(policy: LinkPolicy): Promise<void>;
+  setPolicy(policy: LinkPolicy, audit: AuditRecord): Promise<void>;
 }
 
 export const DEFAULT_LINK_POLICY: LinkPolicy = {
@@ -160,6 +161,21 @@ export class LinkService {
     }
 
     const externalSubjectHash = this.subjectHash(challenge.integrationId, verified.externalSubject);
+    // The cooldown is re-checked here, after verification, because an unlink that
+    // was still verifying when this challenge was issued may have committed since.
+    // History is keyed by the external identity as well as the customer so another
+    // account cannot claim an identity during its cooldown or skip transfer approval.
+    const policy = await this.options.database.getPolicy();
+    const unlinkedSubject = await this.options.database.lastUnlinkedSubject(challenge.integrationId, externalSubjectHash);
+    const unlinkedByActor = await this.options.database.lastUnlinkedAt(actor.id, challenge.integrationId);
+    for (const unlinkedAt of [unlinkedByActor, unlinkedSubject?.unlinkedAt ?? null]) {
+      if (unlinkedAt && this.now().getTime() < unlinkedAt.getTime() + policy.relinkCooldownHours * 60 * 60 * 1000) {
+        throw new LinkError('RELINK_COOLDOWN');
+      }
+    }
+    if (unlinkedSubject && unlinkedSubject.userId !== actor.id && policy.adminTransferApprovalRequired) {
+      throw new LinkError('TRANSFER_APPROVAL_REQUIRED');
+    }
     if (await this.options.database.findLinkByIntegrationSubject(challenge.integrationId, externalSubjectHash)) {
       throw new LinkError('LINK_CONFLICT');
     }
@@ -169,12 +185,16 @@ export class LinkService {
 
     const linkId = randomUUID();
     try {
-      await this.options.database.createLink({
-        id: linkId,
-        userId: actor.id,
-        integrationId: challenge.integrationId,
-        externalSubjectHash,
-      });
+      await this.options.database.createLink(
+        {
+          id: linkId,
+          userId: actor.id,
+          integrationId: challenge.integrationId,
+          externalSubjectHash,
+        },
+        { actorId: actor.id, action: 'link', targetId: linkId },
+        this.now(),
+      );
     } catch (error) {
       // A unique constraint from a concurrent completion means the identity was claimed first.
       if ((error as { code?: string }).code === 'LINK_CONFLICT' || (error as { code?: string }).code === 'P2002') {
@@ -182,7 +202,6 @@ export class LinkService {
       }
       throw error;
     }
-    await this.options.database.createAudit({ actorId: actor.id, action: 'link', targetId: linkId });
     return { linkId, status: 'linked' };
   }
 
@@ -234,11 +253,14 @@ export class LinkService {
       throw new LinkError('VERIFICATION_FAILED');
     }
 
-    const removed = await this.options.database.deleteLink(input.linkId, this.now());
+    const removed = await this.options.database.deleteLink(input.linkId, this.now(), {
+      actorId: actor.id,
+      action: 'unlink',
+      targetId: input.linkId,
+    });
     if (!removed || removed.userId !== actor.id) {
       throw new LinkError('LINK_NOT_FOUND');
     }
-    await this.options.database.createAudit({ actorId: actor.id, action: 'unlink', targetId: input.linkId });
     return { unlinked: true };
   }
 }

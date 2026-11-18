@@ -20,6 +20,133 @@ const anonymousApi = () => ({
   resendVerification: vi.fn(),
   requestPasswordReset: vi.fn(),
   resetPassword: vi.fn(),
+  oauthConsentInfo: vi.fn(),
+  authorizeExtension: vi.fn(),
+});
+
+const consentSearch = new URLSearchParams({
+  client_id: 'extension-client-test',
+  redirect_uri: 'https://extension.invalid/oauth/callback',
+  response_type: 'code',
+  code_challenge: 'x'.repeat(43),
+  code_challenge_method: 'S256',
+  state: 'opaque-state',
+}).toString();
+
+const consentApi = () => ({
+  ...anonymousApi(),
+  me: vi.fn().mockResolvedValue({
+    user: { id: 'customer-1', email: 'customer@example.test', emailVerified: true, role: 'customer' as const },
+  }),
+  links: vi.fn().mockResolvedValue({ links: [] }),
+  oauthConsentInfo: vi.fn().mockResolvedValue({
+    clientId: 'extension-client-test',
+    redirectUri: 'https://extension.invalid/oauth/callback',
+    consentRequired: true,
+  }),
+});
+
+describe('extension authorization consent', () => {
+  it('requires sign-in before displaying a consent action', async () => {
+    const api = {
+      ...anonymousApi(),
+      oauthConsentInfo: vi.fn().mockResolvedValue({
+        clientId: 'extension-client-test',
+        redirectUri: 'https://extension.invalid/oauth/callback',
+        consentRequired: true,
+      }),
+    } as unknown as PortalApi;
+    render(<CustomerPortal api={api} route={{ pathname: '/oauth/authorize', search: `?${consentSearch}` }} />);
+
+    expect(await screen.findByLabelText('Email')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Authorize' })).toBeNull();
+    expect(api.authorizeExtension).not.toHaveBeenCalled();
+  });
+
+  it('resumes the same authorization request after the customer signs in', async () => {
+    const user = { id: 'customer-1', email: 'customer@example.test', emailVerified: true, role: 'customer' as const };
+    const api = {
+      ...anonymousApi(),
+      login: vi.fn().mockResolvedValue({ user }),
+      links: vi.fn().mockResolvedValue({ links: [] }),
+      oauthConsentInfo: vi.fn().mockResolvedValue({
+        clientId: 'extension-client-test',
+        redirectUri: 'https://extension.invalid/oauth/callback',
+        consentRequired: true,
+      }),
+    } as unknown as PortalApi;
+    render(<CustomerPortal api={api} route={{ pathname: '/oauth/authorize', search: `?${consentSearch}` }} />);
+
+    fireEvent.change(await screen.findByLabelText('Email'), { target: { value: 'customer@example.test' } });
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'correct horse battery' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+
+    expect(await screen.findByRole('heading', { name: 'Authorize extension' })).toBeTruthy();
+    expect(screen.getByText('https://extension.invalid/oauth/callback')).toBeTruthy();
+    expect(api.oauthConsentInfo).toHaveBeenCalledWith(expect.objectContaining({
+      clientId: 'extension-client-test',
+      redirectUri: 'https://extension.invalid/oauth/callback',
+    }));
+    expect(api.authorizeExtension).not.toHaveBeenCalled();
+  });
+
+  it('shows the server-validated destination and authorizes nothing on load', async () => {
+    const api = consentApi() as unknown as PortalApi;
+    render(<CustomerPortal api={api} route={{ pathname: '/oauth/authorize', search: `?${consentSearch}` }} />);
+
+    expect(await screen.findByRole('heading', { name: 'Authorize extension' })).toBeTruthy();
+    expect(screen.getByText('https://extension.invalid/oauth/callback')).toBeTruthy();
+    expect(api.oauthConsentInfo).toHaveBeenCalledWith(expect.objectContaining({ clientId: 'extension-client-test' }));
+    expect(api.authorizeExtension).not.toHaveBeenCalled();
+  });
+
+  it('submits explicit consent and follows the returned redirect', async () => {
+    const api = {
+      ...consentApi(),
+      authorizeExtension: vi.fn().mockResolvedValue({
+        redirectUrl: 'https://extension.invalid/oauth/callback?code=opaque-code&state=opaque-state',
+      }),
+    } as unknown as PortalApi;
+    const navigate = vi.fn();
+    render(
+      <CustomerPortal
+        api={api}
+        route={{ pathname: '/oauth/authorize', search: `?${consentSearch}` }}
+        navigate={navigate}
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Authorize' }));
+
+    await waitFor(() => expect(api.authorizeExtension).toHaveBeenCalledWith({
+      clientId: 'extension-client-test',
+      redirectUri: 'https://extension.invalid/oauth/callback',
+      codeChallenge: 'x'.repeat(43),
+      state: 'opaque-state',
+    }));
+    await waitFor(() => expect(navigate).toHaveBeenCalledWith(
+      'https://extension.invalid/oauth/callback?code=opaque-code&state=opaque-state',
+    ));
+  });
+
+  it('refuses to show consent when the extension request is rejected', async () => {
+    const api = {
+      ...consentApi(),
+      oauthConsentInfo: vi.fn().mockRejectedValue(new Error('invalid client')),
+    } as unknown as PortalApi;
+    render(<CustomerPortal api={api} route={{ pathname: '/oauth/authorize', search: `?${consentSearch}` }} />);
+
+    expect(await screen.findByRole('alert')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Authorize' })).toBeNull();
+  });
+
+  it('refuses to render consent for an incomplete authorization request', async () => {
+    const api = { ...consentApi() } as unknown as PortalApi;
+    render(<CustomerPortal api={api} route={{ pathname: '/oauth/authorize', search: '?client_id=only' }} />);
+
+    expect(await screen.findByRole('alert')).toBeTruthy();
+    expect(api.oauthConsentInfo).not.toHaveBeenCalled();
+  });
 });
 
 describe('email verification screen', () => {
@@ -114,21 +241,36 @@ describe('password recovery screens', () => {
 });
 
 describe('account API helpers', () => {
-  it('posts credentials and single-use tokens to the auth endpoints', async () => {
-    const fetcher = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true }) });
+  it('posts credentials, single-use tokens, and explicit OAuth consent to the auth endpoints', async () => {
+    const fetcher = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true, redirectUrl: 'https://extension.invalid/callback' }) });
     const api = new PortalApi('', fetcher);
 
     await api.verifyEmail('opaque-token');
     await api.resendVerification('user@example.test');
     await api.requestPasswordReset('user@example.test');
     await api.resetPassword('opaque-reset', 'correct horse battery');
+    await api.authorizeExtension({
+      clientId: 'extension-client-test',
+      redirectUri: 'https://extension.invalid/oauth/callback',
+      codeChallenge: 'x'.repeat(43),
+      state: 'opaque-state',
+    });
 
     const calls = fetcher.mock.calls.map(([url, init]) => [url, init.method, init.body]);
-    expect(calls).toEqual([
+    expect(calls.slice(0, 4)).toEqual([
       ['/v1/auth/verify-email', 'POST', JSON.stringify({ token: 'opaque-token' })],
       ['/v1/auth/verify-email/resend', 'POST', JSON.stringify({ email: 'user@example.test' })],
       ['/v1/auth/password/reset/request', 'POST', JSON.stringify({ email: 'user@example.test' })],
       ['/v1/auth/password/reset/complete', 'POST', JSON.stringify({ token: 'opaque-reset', newPassword: 'correct horse battery' })],
     ]);
+    expect(calls[4]?.[0]).toBe('/v1/oauth/authorize');
+    expect(calls[4]?.[1]).toBe('POST');
+    expect(JSON.parse(calls[4]?.[2] as string)).toEqual({
+      clientId: 'extension-client-test',
+      redirectUri: 'https://extension.invalid/oauth/callback',
+      codeChallenge: 'x'.repeat(43),
+      consented: true,
+      state: 'opaque-state',
+    });
   });
 });

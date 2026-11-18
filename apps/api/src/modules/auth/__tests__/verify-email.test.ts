@@ -60,6 +60,24 @@ describe('auth.verifyEmail and password reset', () => {
     expect(emailSender.passwordResetEmails).toHaveLength(1);
   });
 
+  it('revokes existing sessions after a password reset', async () => {
+    const repository = new MemoryAuthRepository();
+    const emailSender = new MemoryEmailSender();
+    const service = new AuthService({ repository, emailSender, webOrigin: 'https://portal.example.test' });
+
+    await service.register({ email: 'customer@example.com', password: 'correct horse battery staple' });
+    const user = repository.users.get('customer@example.com')!;
+    repository.users.set(user.email, { ...user, emailVerified: true });
+    const login = await service.login({ email: user.email, password: 'correct horse battery staple' });
+    const rawSession = login.sessionCookie.match(/mark1_session=([^;]+)/)![1]!;
+    await service.requestPasswordReset({ email: user.email });
+    const token = new URL(emailSender.passwordResetEmails[0]!.resetUrl).searchParams.get('token')!;
+
+    await service.resetPassword({ token, newPassword: 'new password value 1234' });
+
+    await expect(service.authenticateSession(rawSession)).resolves.toBeNull();
+  });
+
   it('rejects expired and replayed password-reset tokens (30m limit)', async () => {
     const repository = new MemoryAuthRepository();
     const emailSender = new MemoryEmailSender();

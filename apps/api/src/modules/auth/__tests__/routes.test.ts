@@ -8,12 +8,12 @@ import { MemoryAuthRepository } from './fixtures.js';
 const origin = 'https://portal.example.test';
 const input = { email: 'customer@example.com', password: 'correct horse battery staple' };
 
-async function makeApp() {
+async function makeApp(omitAllowedOrigin = false) {
   const app = Fastify();
   const repository = new MemoryAuthRepository();
   const emailSender = new MemoryEmailSender();
   const auth = new AuthService({ repository, emailSender, webOrigin: origin });
-  await registerAuthRoutes(app, { auth, allowedOrigin: origin });
+  await registerAuthRoutes(app, { auth, allowedOrigin: omitAllowedOrigin ? undefined as unknown as string : origin });
   return { app, repository, emailSender };
 }
 
@@ -23,6 +23,17 @@ describe('auth routes', () => {
     const response = await app.inject({ method: 'POST', url: '/v1/auth/register', payload: input });
     expect(response.statusCode).toBe(403);
     expect(response.json().code).toBe('ORIGIN_FORBIDDEN');
+    await app.close();
+  });
+
+  it('rejects state-changing requests when no allowed origin is configured', async () => {
+    const { app, repository, emailSender } = await makeApp(true);
+    const response = await app.inject({ method: 'POST', url: '/v1/auth/register', payload: input });
+    expect(response.statusCode).toBe(403);
+    expect(response.json().code).toBe('ORIGIN_FORBIDDEN');
+    // No account is created and no verification email leaves the process.
+    expect(repository.users.size).toBe(0);
+    expect(emailSender.verificationEmails).toHaveLength(0);
     await app.close();
   });
 

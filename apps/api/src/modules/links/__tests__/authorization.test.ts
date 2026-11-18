@@ -12,7 +12,7 @@ const verifiedCustomer = { id: 'customer-1', email: 'customer@example.test', ema
 const admin = { id: 'admin-1', email: 'admin@example.test', emailVerified: true, role: 'admin' as const };
 const origin = 'https://portal.example.test';
 
-function linkApp(options: { verifier?: { verify: () => Promise<{ externalSubject: string } | null> } | null } = {}) {
+function linkApp(options: { verifier?: { verify: () => Promise<{ externalSubject: string } | null> } | null; omitOrigin?: boolean } = {}) {
   const database = new MemoryLinkDatabase();
   const app = Fastify();
   const auth = {
@@ -24,11 +24,25 @@ function linkApp(options: { verifier?: { verify: () => Promise<{ externalSubject
     subjectHmacSecret: 'test-secret',
     now: () => now,
   });
-  registerLinkRoutes(app, { links, auth, allowedOrigin: origin });
+  registerLinkRoutes(app, { links, auth, allowedOrigin: options.omitOrigin ? undefined as unknown as string : origin });
   return { app, database };
 }
 
 describe('link lifecycle and authorization', () => {
+  it('rejects state-changing requests when no allowed origin is configured', async () => {
+    const { app, database } = linkApp({ omitOrigin: true });
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v1/links/challenges',
+      headers: { cookie: 'mark1_session=session-a' },
+      payload: { integrationId: 'integration-a' },
+    });
+    expect(response.statusCode).toBe(403);
+    expect(response.json().code).toBe('ORIGIN_FORBIDDEN');
+    expect(database.challenges.size).toBe(0);
+    await app.close();
+  });
+
   it('requires an authenticated, verified session for link routes', async () => {
     const { app } = linkApp({ verifier: { verify: async () => ({ externalSubject: 'external-1' }) } });
     const anonymous = await app.inject({ method: 'GET', url: '/v1/links' });
@@ -62,19 +76,80 @@ describe('link lifecycle and authorization', () => {
   it('allows only an authenticated admin to change link policy', async () => {
     const database = new MemoryLinkDatabase();
     const app = Fastify();
-    registerAdminRoutes(app, { database, authenticate: async (request) => request.headers.authorization === 'Bearer admin' ? admin : verifiedCustomer });
+    registerAdminRoutes(app, {
+      database,
+      authenticate: async (request) => request.headers.authorization === 'Bearer admin' ? admin : verifiedCustomer,
+      allowedOrigin: origin,
+    });
 
     const denied = await app.inject({ method: 'PUT', url: '/v1/admin/link-policy', payload: { relinkCooldownHours: 48, requiresReverification: true, adminTransferApprovalRequired: true } });
     expect(denied.statusCode).toBe(403);
-    const allowed = await app.inject({ method: 'PUT', url: '/v1/admin/link-policy', headers: { authorization: 'Bearer admin', origin: 'https://portal.example.test' }, payload: { relinkCooldownHours: 48, requiresReverification: true, adminTransferApprovalRequired: true } });
+    const missingOrigin = await app.inject({
+      method: 'PUT',
+      url: '/v1/admin/link-policy',
+      headers: { authorization: 'Bearer admin' },
+      payload: { relinkCooldownHours: 48, requiresReverification: true, adminTransferApprovalRequired: true },
+    });
+    expect(missingOrigin.statusCode).toBe(403);
+    const wrongOrigin = await app.inject({
+      method: 'PUT',
+      url: '/v1/admin/link-policy',
+      headers: { authorization: 'Bearer admin', origin: 'https://untrusted.example.test' },
+      payload: { relinkCooldownHours: 48, requiresReverification: true, adminTransferApprovalRequired: true },
+    });
+    expect(wrongOrigin.statusCode).toBe(403);
+    const allowed = await app.inject({ method: 'PUT', url: '/v1/admin/link-policy', headers: { authorization: 'Bearer admin', origin }, payload: { relinkCooldownHours: 48, requiresReverification: true, adminTransferApprovalRequired: true } });
     expect(allowed.statusCode).toBe(200);
     expect(database.policy.relinkCooldownHours).toBe(48);
     await app.close();
   });
 
+  it('rejects policy changes when the allowed origin is missing from route configuration', async () => {
+    const database = new MemoryLinkDatabase();
+    const app = Fastify();
+    registerAdminRoutes(app, {
+      database,
+      authenticate: async () => admin,
+      // Simulate an incomplete JavaScript/runtime configuration, despite the required TypeScript contract.
+    } as unknown as Parameters<typeof registerAdminRoutes>[1]);
+
+    const response = await app.inject({
+      method: 'PUT',
+      url: '/v1/admin/link-policy',
+      payload: { relinkCooldownHours: 48, requiresReverification: true, adminTransferApprovalRequired: true },
+    });
+    expect(response.statusCode).toBe(403);
+    expect(response.json().code).toBe('ORIGIN_FORBIDDEN');
+    expect(database.policy.relinkCooldownHours).not.toBe(48);
+    await app.close();
+  });
+
+  it('does not persist a policy change when its required audit write fails', async () => {
+    const database = new MemoryLinkDatabase();
+    database.failAudit = true;
+    const app = Fastify();
+    registerAdminRoutes(app, {
+      database,
+      authenticate: async () => admin,
+      allowedOrigin: origin,
+    });
+
+    const response = await app.inject({
+      method: 'PUT',
+      url: '/v1/admin/link-policy',
+      headers: { authorization: 'Bearer admin', origin },
+      payload: { relinkCooldownHours: 48, requiresReverification: true, adminTransferApprovalRequired: false },
+    });
+    expect(response.statusCode).toBe(500);
+    expect(database.policy.relinkCooldownHours).toBe(168);
+    expect(database.policy.adminTransferApprovalRequired).toBe(true);
+    expect(database.audits).toHaveLength(0);
+    await app.close();
+  });
+
   it('rejects an unauthenticated caller on admin routes', async () => {
     const app = Fastify();
-    registerAdminRoutes(app, { database: new MemoryLinkDatabase(), authenticate: async () => null });
+    registerAdminRoutes(app, { database: new MemoryLinkDatabase(), authenticate: async () => null, allowedOrigin: origin });
     const response = await app.inject({ method: 'GET', url: '/v1/admin/link-policy' });
     expect(response.statusCode).toBe(401);
     await app.close();

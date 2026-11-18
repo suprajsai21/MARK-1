@@ -26,6 +26,8 @@ model User {
   linkChallenges      LinkChallenge[]
   accountLinks        AccountLink[]
   linkHistories       LinkHistory[]
+  oauthAuthorizationCodes OAuthAuthorizationCode[]
+  oauthTokenFamilies   OAuthTokenFamily[]
 }
 
 model EmailVerificationToken {
@@ -94,11 +96,13 @@ model AccountLink {
 model LinkHistory {
   id            String   @id @default(uuid()) @db.Uuid
   userId        String   @db.Uuid
-  integrationId String   @db.VarChar(64)
-  unlinkedAt    DateTime @default(now())
+  integrationId       String   @db.VarChar(64)
+  externalSubjectHash String   @db.VarChar(64)
+  unlinkedAt           DateTime @default(now())
   user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, integrationId, unlinkedAt])
+  @@index([integrationId, externalSubjectHash, unlinkedAt])
   @@index([unlinkedAt])
 }
 
@@ -111,6 +115,57 @@ model LinkAudit {
 
   @@index([actorId])
   @@index([createdAt])
+}
+
+model OAuthAuthorizationCode {
+  codeHash     String   @id @db.VarChar(64)
+  userId       String   @db.Uuid
+  clientId     String   @db.VarChar(256)
+  redirectUri  String   @db.VarChar(2048)
+  codeChallenge String  @db.VarChar(43)
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([expiresAt])
+  @@index([userId])
+}
+
+model OAuthTokenFamily {
+  id        String   @id @db.VarChar(32)
+  userId    String   @db.Uuid
+  clientId  String   @db.VarChar(256)
+  revokedAt DateTime?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessTokens OAuthAccessToken[]
+  refreshTokens OAuthRefreshToken[]
+
+  @@index([userId, clientId])
+  @@index([revokedAt])
+}
+
+model OAuthAccessToken {
+  tokenHash String          @id @db.VarChar(64)
+  familyId  String          @db.VarChar(32)
+  expiresAt DateTime
+  createdAt DateTime        @default(now())
+  family    OAuthTokenFamily @relation(fields: [familyId], references: [id], onDelete: Cascade)
+
+  @@index([familyId])
+  @@index([expiresAt])
+}
+
+model OAuthRefreshToken {
+  tokenHash String          @id @db.VarChar(64)
+  familyId  String          @db.VarChar(32)
+  expiresAt DateTime
+  consumedAt DateTime?
+  createdAt DateTime        @default(now())
+  family    OAuthTokenFamily @relation(fields: [familyId], references: [id], onDelete: Cascade)
+
+  @@index([familyId])
+  @@index([expiresAt])
 }
 
 model LinkPolicySetting {

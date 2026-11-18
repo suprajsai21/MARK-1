@@ -9,7 +9,7 @@ export function registerAdminRoutes(
   options: {
     database: LinkDatabase;
     authenticate: (request: FastifyRequest) => Promise<AuthUser | null>;
-    allowedOrigin?: string;
+    allowedOrigin: string;
   },
 ): void {
   const sendError = (reply: FastifyReply, status: number, code: string) =>
@@ -27,7 +27,7 @@ export function registerAdminRoutes(
   };
 
   const originAllowed = (request: FastifyRequest): boolean =>
-    !options.allowedOrigin || request.headers.origin === options.allowedOrigin;
+    Boolean(options.allowedOrigin) && request.headers.origin === options.allowedOrigin;
 
   app.get('/v1/admin/link-policy', async (request, reply) => {
     if (!(await admin(request, reply))) return;
@@ -45,8 +45,11 @@ export function registerAdminRoutes(
       return sendError(reply, 400, 'INVALID_INPUT');
     }
     const policy: LinkPolicy = parsed.data;
-    await options.database.setPolicy(policy);
-    await options.database.createAudit({ actorId: actor.id, action: 'policy_change', targetId: 'link-policy' });
+    await options.database.setPolicy(policy, {
+      actorId: actor.id,
+      action: 'policy_change',
+      targetId: 'link-policy',
+    });
     return reply.send(policy);
   });
 }

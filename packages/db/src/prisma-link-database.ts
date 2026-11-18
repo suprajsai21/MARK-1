@@ -53,30 +53,16 @@ export interface LinkTransactionalDatabase {
     deleteMany(input: { where: ChallengeWhere }): Promise<{ count: number }>;
   };
   accountLink: {
+    create(input: { data: PrismaLinkRecord }): Promise<unknown>;
     findUnique(input: { where: { id: string } }): Promise<PrismaLinkRecord | null>;
     deleteMany(input: { where: { id: string; userId: string } }): Promise<{ count: number }>;
   };
   linkHistory: {
-    create(input: { data: { userId: string; integrationId: string } }): Promise<unknown>;
-  };
-}
-
-export interface LinkDatabaseClient extends LinkTransactionalDatabase {
-  accountLink: LinkTransactionalDatabase['accountLink'] & {
-    create(input: { data: PrismaLinkRecord }): Promise<unknown>;
+    create(input: { data: { userId: string; integrationId: string; externalSubjectHash: string } }): Promise<unknown>;
     findFirst(input: {
-      where: { userId?: string; integrationId?: string; externalSubjectHash?: string };
-    }): Promise<PrismaLinkRecord | null>;
-    findMany(input: { where: { userId: string } }): Promise<PrismaLinkRecord[]>;
-  };
-  linkHistory: LinkTransactionalDatabase['linkHistory'] & {
-    findFirst(input: {
-      where: { userId?: string; integrationId?: string };
+      where: { userId?: string; integrationId: string; externalSubjectHash?: string };
       orderBy?: { unlinkedAt: 'desc' };
-    }): Promise<{ unlinkedAt: Date } | null>;
-  };
-  linkAudit: {
-    create(input: { data: { actorId: string; action: string; targetId: string } }): Promise<unknown>;
+    }): Promise<{ userId: string; unlinkedAt: Date } | null>;
   };
   linkPolicySetting: {
     findUnique(input: { where: { id: number } }): Promise<LinkPolicy | null>;
@@ -85,6 +71,18 @@ export interface LinkDatabaseClient extends LinkTransactionalDatabase {
       create: LinkPolicy;
       update: LinkPolicy;
     }): Promise<LinkPolicy>;
+  };
+  linkAudit: {
+    create(input: { data: { actorId: string; action: string; targetId: string } }): Promise<unknown>;
+  };
+}
+
+export interface LinkDatabaseClient extends LinkTransactionalDatabase {
+  accountLink: LinkTransactionalDatabase['accountLink'] & {
+    findFirst(input: {
+      where: { userId?: string; integrationId?: string; externalSubjectHash?: string };
+    }): Promise<PrismaLinkRecord | null>;
+    findMany(input: { where: { userId: string } }): Promise<PrismaLinkRecord[]>;
   };
   $transaction<T>(callback: (transaction: LinkTransactionalDatabase) => Promise<T>): Promise<T>;
 }
@@ -156,15 +154,43 @@ export class PrismaLinkDatabase {
     return this.database.accountLink.findUnique({ where: { id } });
   }
 
-  async createLink(record: StoredLink): Promise<void> {
-    await this.database.accountLink.create({ data: record });
+  async createLink(
+    record: StoredLink,
+    audit: { actorId: string; action: 'link'; targetId: string },
+    now: Date,
+  ): Promise<void> {
+    await this.database.$transaction(async (transaction) => {
+      const policy = (await transaction.linkPolicySetting.findUnique({ where: { id: POLICY_ID } })) ?? DEFAULT_POLICY;
+      const userHistory = await transaction.linkHistory.findFirst({
+        where: { userId: record.userId, integrationId: record.integrationId },
+        orderBy: { unlinkedAt: 'desc' },
+      });
+      const subjectHistory = await transaction.linkHistory.findFirst({
+        where: { integrationId: record.integrationId, externalSubjectHash: record.externalSubjectHash },
+        orderBy: { unlinkedAt: 'desc' },
+      });
+      const releaseAt = (unlinkedAt: Date) => unlinkedAt.getTime() + policy.relinkCooldownHours * 60 * 60 * 1000;
+      if ((userHistory && now.getTime() < releaseAt(userHistory.unlinkedAt)) ||
+          (subjectHistory && now.getTime() < releaseAt(subjectHistory.unlinkedAt))) {
+        throw Object.assign(new Error('RELINK_COOLDOWN'), { code: 'RELINK_COOLDOWN' });
+      }
+      if (subjectHistory && subjectHistory.userId !== record.userId && policy.adminTransferApprovalRequired) {
+        throw Object.assign(new Error('TRANSFER_APPROVAL_REQUIRED'), { code: 'TRANSFER_APPROVAL_REQUIRED' });
+      }
+      await transaction.accountLink.create({ data: record });
+      await transaction.linkAudit.create({ data: audit });
+    });
   }
 
   async listLinks(userId: string): Promise<StoredLink[]> {
     return this.database.accountLink.findMany({ where: { userId } });
   }
 
-  async deleteLink(id: string): Promise<StoredLink | null> {
+  async deleteLink(
+    id: string,
+    _now: Date,
+    audit: { actorId: string; action: 'unlink'; targetId: string },
+  ): Promise<StoredLink | null> {
     return this.database.$transaction(async (transaction) => {
       const existing = await transaction.accountLink.findUnique({ where: { id } });
       if (!existing) {
@@ -175,8 +201,13 @@ export class PrismaLinkDatabase {
         return null;
       }
       await transaction.linkHistory.create({
-        data: { userId: existing.userId, integrationId: existing.integrationId },
+        data: {
+          userId: existing.userId,
+          integrationId: existing.integrationId,
+          externalSubjectHash: existing.externalSubjectHash,
+        },
       });
+      await transaction.linkAudit.create({ data: audit });
       return existing;
     });
   }
@@ -189,8 +220,14 @@ export class PrismaLinkDatabase {
     return row?.unlinkedAt ?? null;
   }
 
-  async createAudit(record: { actorId: string; action: 'link' | 'unlink' | 'policy_change'; targetId: string }): Promise<void> {
-    await this.database.linkAudit.create({ data: record });
+  async lastUnlinkedSubject(
+    integrationId: string,
+    externalSubjectHash: string,
+  ): Promise<{ userId: string; unlinkedAt: Date } | null> {
+    return this.database.linkHistory.findFirst({
+      where: { integrationId, externalSubjectHash },
+      orderBy: { unlinkedAt: 'desc' },
+    });
   }
 
   async getPolicy(): Promise<LinkPolicy> {
@@ -200,11 +237,17 @@ export class PrismaLinkDatabase {
     return row ?? DEFAULT_POLICY;
   }
 
-  async setPolicy(policy: LinkPolicy): Promise<void> {
-    await this.database.linkPolicySetting.upsert({
-      where: { id: POLICY_ID },
-      create: policy,
-      update: policy,
+  async setPolicy(
+    policy: LinkPolicy,
+    audit: { actorId: string; action: 'policy_change'; targetId: string },
+  ): Promise<void> {
+    await this.database.$transaction(async (transaction) => {
+      await transaction.linkPolicySetting.upsert({
+        where: { id: POLICY_ID },
+        create: policy,
+        update: policy,
+      });
+      await transaction.linkAudit.create({ data: audit });
     });
   }
 }

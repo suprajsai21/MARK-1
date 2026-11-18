@@ -7,6 +7,8 @@ import type { LinkDatabase, PlatformLinkVerifier } from './modules/links/service
 import { LinkService } from './modules/links/service.js';
 import { registerLinkRoutes } from './modules/links/routes.js';
 import { sessionTokenFromRequest } from './plugins/auth.js';
+import { cookieAuthenticator, registerOAuthRoutes } from './modules/oauth/routes.js';
+import type { OAuthService } from './modules/oauth/service.js';
 import { createRuntime } from './runtime.js';
 import type { RuntimeEnvironment, RuntimeOverrides } from './runtime.js';
 
@@ -19,6 +21,7 @@ export type ServerOptions = {
   /** Approved external verifier. Omitted means account linking is disabled. */
   verifier?: PlatformLinkVerifier | null;
   subjectHmacSecret?: string;
+  oauth?: OAuthService;
 };
 
 /**
@@ -52,6 +55,15 @@ export function buildServer(options: ServerOptions): FastifyInstance {
     });
   }
 
+  if (options.oauth) {
+    registerOAuthRoutes(app, {
+      oauth: options.oauth,
+      allowedOrigin: options.allowedOrigin,
+      authenticate: cookieAuthenticator((token) => options.auth.authenticateSession(token)),
+      ...(options.rateLimit ? { rateLimit: options.rateLimit } : {}),
+    });
+  }
+
   return app;
 }
 
@@ -74,5 +86,6 @@ export function buildConfiguredServer(
     ...(runtime.linkDatabase ? { linkDatabase: runtime.linkDatabase } : {}),
     verifier: runtime.verifier,
     subjectHmacSecret: runtime.subjectHmacSecret,
+    ...(runtime.oauth ? { oauth: runtime.oauth } : {}),
   });
 }

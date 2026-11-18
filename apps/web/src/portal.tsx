@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { AccountLink, Customer, PortalApi } from './api.js';
+import { ExtensionConsentPage } from './features/auth/ExtensionConsentPage.js';
 
 type PortalRoute = { pathname: string; search: string };
+type PortalNavigate = (url: string) => void;
 
 type Session =
   | { status: 'loading' }
@@ -15,7 +17,15 @@ type Notice = { tone: 'error' | 'info'; text: string } | null;
  * integrations. Linking itself starts inside the integration's own flow; this
  * portal never collects an external website password or session cookie.
  */
-export function CustomerPortal({ api, route }: { api: PortalApi; route?: PortalRoute }) {
+export function CustomerPortal({
+  api,
+  route,
+  navigate,
+}: {
+  api: PortalApi;
+  route?: PortalRoute;
+  navigate?: PortalNavigate;
+}) {
   const current = route ?? (typeof window === 'undefined'
     ? { pathname: '/', search: '' }
     : { pathname: window.location.pathname, search: window.location.search });
@@ -39,7 +49,7 @@ export function CustomerPortal({ api, route }: { api: PortalApi; route?: PortalR
 
   useEffect(() => {
     let active = true;
-    if (isScreenRoute(current.pathname)) {
+    if (current.pathname === '/verify-email' || current.pathname === '/password/reset') {
       return () => {
         active = false;
       };
@@ -125,7 +135,11 @@ export function CustomerPortal({ api, route }: { api: PortalApi; route?: PortalR
 
       {current.pathname === '/verify-email' && <VerifyEmailScreen api={api} token={tokenFrom(current.search)} />}
       {current.pathname === '/password/reset' && <ResetPasswordScreen api={api} token={tokenFrom(current.search)} />}
-      {!isScreenRoute(current.pathname) && (
+      {current.pathname === '/oauth/authorize' && session.status === 'authenticated' && (
+        <ExtensionConsentScreen api={api} search={current.search} {...(navigate ? { navigate } : {})} />
+      )}
+      {((current.pathname !== '/oauth/authorize' && !isScreenRoute(current.pathname)) ||
+        (current.pathname === '/oauth/authorize' && session.status !== 'authenticated')) && (
         <>
           {session.status === 'loading' && <p role="status">Loading your account…</p>}
 
@@ -214,8 +228,87 @@ function tokenFrom(search: string): string | null {
   return new URLSearchParams(search).get('token') || null;
 }
 
+function ExtensionConsentScreen({
+  api,
+  search,
+  navigate,
+}: {
+  api: PortalApi;
+  search: string;
+  navigate?: PortalNavigate;
+}) {
+  const params = new URLSearchParams(search);
+  const clientId = params.get('client_id');
+  const redirectUri = params.get('redirect_uri');
+  const codeChallenge = params.get('code_challenge');
+  const state = params.get('state') ?? undefined;
+  const [validated, setValidated] = useState<{ clientId: string; redirectUri: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState<Notice>(null);
+
+  useEffect(() => {
+    let active = true;
+    if (!clientId || !redirectUri || !codeChallenge || params.get('response_type') !== 'code' ||
+      params.get('code_challenge_method') !== 'S256') {
+      setNotice({ tone: 'error', text: 'This authorization request is incomplete or invalid.' });
+      return () => { active = false; };
+    }
+    api.oauthConsentInfo({ clientId, redirectUri, codeChallenge, ...(state === undefined ? {} : { state }) })
+      .then((result) => {
+        if (active && result.consentRequired && result.clientId === clientId && result.redirectUri === redirectUri) {
+          setValidated({ clientId: result.clientId, redirectUri: result.redirectUri });
+        } else if (active) {
+          setNotice({ tone: 'error', text: 'This authorization request could not be validated.' });
+        }
+      })
+      .catch((error) => {
+        if (active) setNotice({ tone: 'error', text: describe(error, 'This authorization request could not be validated.') });
+      });
+    return () => { active = false; };
+  }, [api, clientId, redirectUri, codeChallenge, state]);
+
+  const consent = async () => {
+    if (!validated || !codeChallenge) return;
+    setBusy(true);
+    setNotice(null);
+    try {
+      const { redirectUrl } = await api.authorizeExtension({
+        ...validated,
+        codeChallenge,
+        ...(state === undefined ? {} : { state }),
+      });
+      const destination = new URL(redirectUrl);
+      if (destination.origin !== new URL(validated.redirectUri).origin ||
+          destination.protocol !== new URL(validated.redirectUri).protocol) {
+        throw new Error('The authorization response destination was not expected.');
+      }
+      if (navigate) navigate(destination.toString());
+      else window.location.assign(destination.toString());
+    } catch (error) {
+      setNotice({ tone: 'error', text: describe(error, 'Authorization could not be completed.') });
+      setBusy(false);
+    }
+  };
+
+  if (validated) {
+    return (
+      <>
+        <ExtensionConsentPage
+          clientDisplayName="A browser extension"
+          redirectUri={validated.redirectUri}
+          onConsent={() => { void consent(); }}
+          onCancel={() => { if (navigate) navigate('/'); else window.location.assign('/'); }}
+        />
+        {busy && <p role="status">Completing authorization…</p>}
+        {notice && <p role="alert">{notice.text}</p>}
+      </>
+    );
+  }
+  return <p role={notice ? 'alert' : 'status'}>{notice?.text ?? 'Validating authorization request…'}</p>;
+}
+
 /**
- * Verification is a deliberate click, not an effect: a link scanner or mail
+ * Verification is a deliberate click: a link scanner or mail proxy that
  * proxy that prefetches the URL must not consume the single-use token.
  */
 function VerifyEmailScreen({ api, token }: { api: PortalApi; token: string | null }) {

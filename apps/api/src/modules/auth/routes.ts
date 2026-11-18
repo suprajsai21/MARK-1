@@ -73,7 +73,7 @@ export function registerAuthRoutes(
   registerAuthRateLimits(app, options.rateLimit ?? { max: 30, windowMs: 60_000 });
 
   const originGuard = (request: FastifyRequest, reply: FastifyReply): boolean => {
-    if (requestOrigin(request) !== options.allowedOrigin) {
+    if (!options.allowedOrigin || requestOrigin(request) !== options.allowedOrigin) {
       reply.code(403).send({ code: 'ORIGIN_FORBIDDEN', message: 'Origin forbidden' });
       return false;
     }

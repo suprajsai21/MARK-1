@@ -3,8 +3,21 @@ export {
   AuthUserSchema,
   LoginInputSchema,
   RegisterInputSchema,
+  OAuthAuthorizeQuerySchema,
+  OAuthAuthorizationInputSchema,
+  OAuthTokenInputSchema,
+  OAuthRevokeInputSchema,
 } from './auth.js';
-export type { ApiError, AuthUser, LoginInput, RegisterInput } from './auth.js';
+export type {
+  ApiError,
+  AuthUser,
+  LoginInput,
+  RegisterInput,
+  OAuthAuthorizeQuery,
+  OAuthAuthorizationInput,
+  OAuthTokenInput,
+  OAuthRevokeInput,
+} from './auth.js';
 export {
   CompleteLinkInputSchema,
   CreateLinkChallengeInputSchema,

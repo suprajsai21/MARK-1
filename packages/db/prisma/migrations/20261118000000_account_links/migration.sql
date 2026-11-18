@@ -23,6 +23,7 @@ CREATE TABLE "LinkHistory" (
     "id" UUID NOT NULL,
     "userId" UUID NOT NULL,
     "integrationId" VARCHAR(64) NOT NULL,
+    "externalSubjectHash" VARCHAR(64) NOT NULL,
     "unlinkedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "LinkHistory_pkey" PRIMARY KEY ("id")
 );
@@ -54,6 +55,7 @@ CREATE INDEX "LinkChallenge_userId_idx" ON "LinkChallenge"("userId");
 CREATE INDEX "LinkChallenge_expiresAt_idx" ON "LinkChallenge"("expiresAt");
 CREATE INDEX "AccountLink_userId_idx" ON "AccountLink"("userId");
 CREATE INDEX "LinkHistory_userId_integrationId_unlinkedAt_idx" ON "LinkHistory"("userId", "integrationId", "unlinkedAt");
+CREATE INDEX "LinkHistory_integrationId_externalSubjectHash_unlinkedAt_idx" ON "LinkHistory"("integrationId", "externalSubjectHash", "unlinkedAt");
 CREATE INDEX "LinkHistory_unlinkedAt_idx" ON "LinkHistory"("unlinkedAt");
 CREATE INDEX "LinkAudit_actorId_idx" ON "LinkAudit"("actorId");
 CREATE INDEX "LinkAudit_createdAt_idx" ON "LinkAudit"("createdAt");

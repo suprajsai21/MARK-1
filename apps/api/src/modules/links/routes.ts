@@ -15,7 +15,7 @@ export function registerLinkRoutes(
     return token ? options.auth.authenticateSession(token) : null;
   };
   const originGuard = (request: FastifyRequest, reply: FastifyReply): boolean => {
-    if (requestOrigin(request) !== options.allowedOrigin) {
+    if (!options.allowedOrigin || requestOrigin(request) !== options.allowedOrigin) {
       reply.code(403).send({ code: 'ORIGIN_FORBIDDEN', message: 'Origin forbidden' });
       return false;
     }

@@ -86,8 +86,16 @@ export class PrismaAuthRepository implements AuthRepository {
     return record ? toStoredUser(record) : null;
   }
 
+  /**
+   * Changing the password revokes every existing session in the same
+   * transaction, so a session stolen before account recovery cannot outlive
+   * the reset. If the session delete fails, the password change rolls back.
+   */
   async updatePassword(userId: string, passwordHash: string): Promise<void> {
-    await this.database.user.update({ where: { id: userId }, data: { passwordHash } });
+    await this.database.$transaction(async (transaction) => {
+      await transaction.user.update({ where: { id: userId }, data: { passwordHash } });
+      await transaction.session.deleteMany({ where: { userId } });
+    });
   }
 
   async storeVerificationToken(userId: string, tokenHash: string, expiresAt: Date): Promise<void> {

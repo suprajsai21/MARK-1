@@ -16,6 +16,7 @@ export interface AuthRepository {
   createUser(input: { email: string; passwordHash: string }): Promise<StoredUser>;
   findUserByEmail(email: string): Promise<StoredUser | null>;
   findUserById(userId: string): Promise<StoredUser | null>;
+  /** Replaces the password hash and revokes every existing session for the user in one transaction. */
   updatePassword(userId: string, passwordHash: string): Promise<void>;
   storeVerificationToken(userId: string, tokenHash: string, expiresAt: Date): Promise<void>;
   consumeVerificationToken(tokenHash: string, now: Date): Promise<StoredUser | null>;
@@ -59,6 +60,12 @@ export class MemoryAuthRepository implements AuthRepository {
     const user = [...this.users.values()].find((u) => u.id === userId);
     if (user) {
       this.users.set(user.email, { ...user, passwordHash });
+    }
+    // A password change must not leave previously issued sessions usable.
+    for (const [hash, session] of this.sessions) {
+      if (session.userId === userId) {
+        this.sessions.delete(hash);
+      }
     }
   }
 
@@ -121,6 +128,8 @@ export { PrismaAuthRepository, toStoredUser } from './prisma-auth-repository.js'
 export type { AuthDatabase, PrismaUserRecord } from './prisma-auth-repository.js';
 export { PrismaLinkDatabase } from './prisma-link-database.js';
 export type { LinkDatabaseClient as PrismaLinkDatabaseClient } from './prisma-link-database.js';
+export { PrismaOAuthStore } from './prisma-oauth-store.js';
+export type { OAuthDatabase as PrismaOAuthDatabase, OAuthAuthorizationCodeRecord, OAuthTokenFamilyRecord, OAuthRefreshRotationRecord } from './prisma-oauth-store.js';
 
 /** Creates the durable client from a configured PostgreSQL URL. */
 export function createPrismaClient(databaseUrl: string): PrismaClient {

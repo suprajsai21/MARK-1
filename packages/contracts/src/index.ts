@@ -30,3 +30,5 @@ export type {
   LinkPolicy,
   UnlinkLinkInput,
 } from './links.js';
+export { EntitlementStatusSchema, PaymentOrderStatusSchema, PriceSnapshotSchema } from './payments.js';
+export type { EntitlementStatus, PaymentOrderStatus, PriceSnapshot } from './payments.js';

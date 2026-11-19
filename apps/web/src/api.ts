@@ -1,5 +1,9 @@
 export type Customer = { id: string; email: string; emailVerified: boolean; role: 'customer' | 'admin' };
 export type AccountLink = { linkId: string; integrationId: string };
+export type PriceSnapshot = { productVersionId: string; amountPaise: number; currency: 'INR'; version: number };
+export type CheckoutOrder = { orderId: string; amountPaise: string; currency: 'INR'; productVersionId: string; status: 'created' | 'paid' | 'failed' | 'refunded' | 'charged_back' };
+export type CheckoutSession = { orderId: string; amountPaise: string; currency: 'INR'; productVersionId: string; razorpayOrderId: string; checkoutKeyId: string };
+export type Entitlement = { productVersionId: string; status: 'active' | 'revoked' };
 
 type Fetcher = typeof fetch;
 
@@ -103,6 +107,26 @@ export class PortalApi {
 
   async links(): Promise<{ links: AccountLink[] }> {
     return this.request('/v1/links');
+  }
+
+  async currentPrice(): Promise<{ price: PriceSnapshot | null }> {
+    return this.request('/v1/pricing/current');
+  }
+
+  async createCheckoutOrder(): Promise<CheckoutSession> {
+    return this.request('/v1/checkout/orders', { method: 'POST', body: JSON.stringify({}) });
+  }
+
+  async checkoutOrder(orderId: string): Promise<{ order: CheckoutOrder }> {
+    return this.request(`/v1/checkout/orders/${encodeURIComponent(orderId)}`);
+  }
+
+  async entitlements(): Promise<{ entitlements: Entitlement[] }> {
+    return this.request('/v1/entitlement');
+  }
+
+  async setCurrentPrice(input: { productVersionId: string; amountPaise: number }): Promise<PriceSnapshot> {
+    return this.request('/v1/admin/pricing/current', { method: 'PUT', body: JSON.stringify(input) });
   }
 
   async unlink(linkId: string, challengeId: string, proof: string): Promise<{ unlinked: true }> {

@@ -130,6 +130,8 @@ export { PrismaLinkDatabase } from './prisma-link-database.js';
 export type { LinkDatabaseClient as PrismaLinkDatabaseClient } from './prisma-link-database.js';
 export { PrismaOAuthStore } from './prisma-oauth-store.js';
 export type { OAuthDatabase as PrismaOAuthDatabase, OAuthAuthorizationCodeRecord, OAuthTokenFamilyRecord, OAuthRefreshRotationRecord } from './prisma-oauth-store.js';
+export { PrismaPaymentDatabase } from './prisma-payment-database.js';
+export type { PaymentDatabaseClient as PrismaPaymentDatabaseClient } from './prisma-payment-database.js';
 
 /** Creates the durable client from a configured PostgreSQL URL. */
 export function createPrismaClient(databaseUrl: string): PrismaClient {

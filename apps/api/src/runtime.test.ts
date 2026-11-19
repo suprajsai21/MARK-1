@@ -4,6 +4,8 @@ import { OAuthService } from './modules/oauth/service.js';
 import { MemoryEmailSender } from './modules/auth/email-sender.js';
 import { MemoryAuthRepository } from './modules/auth/__tests__/fixtures.js';
 import { MemoryOAuthStore } from './modules/oauth/__tests__/fixtures.js';
+import { PricingService } from './modules/pricing/service.js';
+import { CheckoutService } from './modules/payments/service.js';
 
 const baseEnv = {
   DATABASE_URL: 'postgresql://customer:password@localhost:5432/mark1_dev',
@@ -33,6 +35,37 @@ describe('API runtime configuration', () => {
     expect(runtime.auth).toBeDefined();
     expect(runtime.oauth?.clientId).toBe(baseEnv.OAUTH_CLIENT_ID);
     expect(runtime.oauth?.redirectUris).toEqual([baseEnv.OAUTH_REDIRECT_URIS]);
+  });
+
+  it('requires Razorpay credentials as a pair whenever checkout is enabled', () => {
+    expect(() => createRuntime({ ...baseEnv, RAZORPAY_KEY_ID: 'rzp_test_key' }))
+      .toThrow('RAZORPAY_KEY_SECRET_REQUIRED');
+  });
+
+  it('wires injected pricing and checkout services into the runtime', () => {
+    const pricing = new PricingService({
+      database: { async setCurrentPrice() { throw new Error('unused'); }, async getCurrentPrice() { return null; } },
+      productVersionId: 'mark1-v1',
+    });
+    const checkout = new CheckoutService({
+      database: { async getCurrentPrice() { return null; }, async createOrder() { throw new Error('unused'); }, async findOrderForUser() { return null; } },
+      provider: { async createOrder() { return { id: 'unused' }; } },
+      productVersionId: 'mark1-v1', checkoutKeyId: 'rzp_test_key', hasLinkedAccount: async () => true,
+    });
+    const paymentDatabase = {
+      async setCurrentPrice() { throw new Error('unused'); },
+      async getCurrentPrice() { return null; },
+      async createOrder() { throw new Error('unused'); },
+      async findOrderForUser() { return null; },
+      async hasLinkedAccount() { return true; },
+    };
+    const runtime = createRuntime(baseEnv, {
+      repository: new MemoryAuthRepository(), emailSender: new MemoryEmailSender(), paymentDatabase, pricingService: pricing, checkoutService: checkout,
+    });
+    expect(runtime.pricing).toBe(pricing);
+    expect(runtime.checkout).toBe(checkout);
+    expect(runtime.entitlementLookup).toBeUndefined();
+    expect(runtime.webhook).toBeUndefined();
   });
 
   it('uses injected adapters for local development and tests', () => {

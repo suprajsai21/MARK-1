@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { AccountLink, Customer, PortalApi } from './api.js';
 import { ExtensionConsentPage } from './features/auth/ExtensionConsentPage.js';
+import { CheckoutPage } from './features/checkout/CheckoutPage.js';
+import { PricingPage } from './features/admin/pricing/PricingPage.js';
 
 type PortalRoute = { pathname: string; search: string };
 type PortalNavigate = (url: string) => void;
@@ -29,6 +31,9 @@ export function CustomerPortal({
   const current = route ?? (typeof window === 'undefined'
     ? { pathname: '/', search: '' }
     : { pathname: window.location.pathname, search: window.location.search });
+  const returnOrderId = current.pathname === '/payment/return'
+    ? new URLSearchParams(current.search).get('order_id')
+    : null;
   const [session, setSession] = useState<Session>({ status: 'loading' });
   const [notice, setNotice] = useState<Notice>(null);
   const [email, setEmail] = useState('');
@@ -135,10 +140,19 @@ export function CustomerPortal({
 
       {current.pathname === '/verify-email' && <VerifyEmailScreen api={api} token={tokenFrom(current.search)} />}
       {current.pathname === '/password/reset' && <ResetPasswordScreen api={api} token={tokenFrom(current.search)} />}
+      {session.status === 'authenticated' && current.pathname === '/checkout' && <CheckoutPage api={api} />}
+      {current.pathname === '/payment/return' && (
+        returnOrderId ? <CheckoutPage api={api} initialOrderId={returnOrderId} /> :
+          <p role="alert">This payment return is missing its order reference.</p>
+      )}
+      {session.status === 'authenticated' && current.pathname === '/admin/pricing' && (
+        session.user.role === 'admin' ? <PricingPage api={api} /> :
+          <p role="alert">Administrator access is required to manage pricing.</p>
+      )}
       {current.pathname === '/oauth/authorize' && session.status === 'authenticated' && (
         <ExtensionConsentScreen api={api} search={current.search} {...(navigate ? { navigate } : {})} />
       )}
-      {((current.pathname !== '/oauth/authorize' && !isScreenRoute(current.pathname)) ||
+      {((current.pathname !== '/oauth/authorize' && !isScreenRoute(current.pathname) && !isPaymentRoute(current.pathname)) ||
         (current.pathname === '/oauth/authorize' && session.status !== 'authenticated')) && (
         <>
           {session.status === 'loading' && <p role="status">Loading your account…</p>}
@@ -222,6 +236,10 @@ function describe(error: unknown, fallback: string): string {
 /** Routes that render a single-purpose screen instead of the account view. */
 function isScreenRoute(pathname: string): boolean {
   return pathname === '/verify-email' || pathname === '/password/reset';
+}
+
+function isPaymentRoute(pathname: string): boolean {
+  return pathname === '/checkout' || pathname === '/payment/return' || pathname === '/admin/pricing';
 }
 
 function tokenFrom(search: string): string | null {

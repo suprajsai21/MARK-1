@@ -11,6 +11,14 @@ import { cookieAuthenticator, registerOAuthRoutes } from './modules/oauth/routes
 import type { OAuthService } from './modules/oauth/service.js';
 import { createRuntime } from './runtime.js';
 import type { RuntimeEnvironment, RuntimeOverrides } from './runtime.js';
+import { registerPricingRoutes } from './modules/pricing/routes.js';
+import { registerCheckoutRoutes } from './modules/payments/routes.js';
+import type { PricingService } from './modules/pricing/service.js';
+import type { CheckoutService } from './modules/payments/service.js';
+import type { WebhookService } from './modules/payments/webhook-service.js';
+import { registerWebhookRoutes } from './modules/payments/webhook-routes.js';
+import type { EntitlementView } from './modules/payments/entitlement-routes.js';
+import { registerEntitlementRoutes } from './modules/payments/entitlement-routes.js';
 
 export type ServerOptions = {
   auth: AuthService;
@@ -22,6 +30,11 @@ export type ServerOptions = {
   verifier?: PlatformLinkVerifier | null;
   subjectHmacSecret?: string;
   oauth?: OAuthService;
+  pricing?: PricingService;
+  checkout?: CheckoutService;
+  webhook?: WebhookService;
+  webhookSecret?: string;
+  entitlementLookup?: (userId: string) => Promise<EntitlementView[]>;
 };
 
 /**
@@ -53,6 +66,34 @@ export function buildServer(options: ServerOptions): FastifyInstance {
       authenticate,
       allowedOrigin: options.allowedOrigin,
     });
+  }
+
+  if (options.pricing) {
+    registerPricingRoutes(app, {
+      pricing: options.pricing,
+      authenticate: async (request) => {
+        const token = sessionTokenFromRequest(request);
+        return token ? options.auth.authenticateSession(token) : null;
+      },
+      allowedOrigin: options.allowedOrigin,
+    });
+  }
+  const authenticate = async (request: Parameters<typeof sessionTokenFromRequest>[0]) => {
+    const token = sessionTokenFromRequest(request);
+    return token ? options.auth.authenticateSession(token) : null;
+  };
+  if (options.checkout) {
+    registerCheckoutRoutes(app, {
+      checkout: options.checkout,
+      authenticate,
+      allowedOrigin: options.allowedOrigin,
+    });
+  }
+  if (options.webhook) {
+    registerWebhookRoutes(app, { secret: options.webhookSecret ?? '', process: (input) => options.webhook!.process(input) });
+  }
+  if (options.entitlementLookup) {
+    registerEntitlementRoutes(app, { authenticate, getForUser: options.entitlementLookup });
   }
 
   if (options.oauth) {
@@ -87,5 +128,10 @@ export function buildConfiguredServer(
     verifier: runtime.verifier,
     subjectHmacSecret: runtime.subjectHmacSecret,
     ...(runtime.oauth ? { oauth: runtime.oauth } : {}),
+    ...(runtime.pricing ? { pricing: runtime.pricing } : {}),
+    ...(runtime.checkout ? { checkout: runtime.checkout } : {}),
+    ...(runtime.webhook ? { webhook: runtime.webhook } : {}),
+    ...(runtime.entitlementLookup ? { entitlementLookup: (userId: string) => runtime.entitlementLookup!(userId, 'mark1-v1') } : {}),
+    webhookSecret: environment.RAZORPAY_WEBHOOK_SECRET?.trim() ?? '',
   });
 }

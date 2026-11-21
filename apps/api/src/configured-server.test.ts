@@ -72,7 +72,7 @@ describe('configured API server', () => {
     const signature = createHmac('sha256', webhookSecret).update(body).digest('hex');
     const webhookResponse = await app.inject({ method: 'POST', url: '/v1/webhooks/razorpay', headers: { 'content-type': 'application/json', 'x-razorpay-signature': signature }, payload: body });
     const rejectedResponse = await app.inject({ method: 'POST', url: '/v1/webhooks/razorpay', headers: { 'content-type': 'application/json', 'x-razorpay-signature': '0'.repeat(64) }, payload: body });
-    const entitlementResponse = await app.inject({ method: 'GET', url: '/v1/entitlement' });
+    const entitlementResponse = await app.inject({ method: 'GET', url: '/v1/entitlement?productVersionId=mark1-v1' });
     expect(webhookResponse.statusCode).toBe(200);
     expect(webhookResponse.json()).toEqual({ accepted: true, duplicate: false });
     expect(rejectedResponse.statusCode).toBe(400);

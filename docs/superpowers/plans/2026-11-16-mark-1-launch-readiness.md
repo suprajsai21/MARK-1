@@ -53,11 +53,11 @@
 - `IntegrationReadiness`: `{ linkMethodVerified: boolean; stagingAccessVerified: boolean; approvedWorkflowIds: string[]; allowedActions: Array<"capture" | "insert" | "select" | "submit">; evidenceReference: string }`
 - `evidenceReference` points to a secure, access-controlled source; it must not contain credentials or customer page content.
 
-- [ ] **Step 1: Write failing registry-policy tests** proving that an integration with missing link verification, staging verification, approved workflows, or allowed actions cannot be enabled.
-- [ ] **Step 2: Run `pnpm --filter @mark-1/extension test -- registry-policy`; confirm an unverified integration currently appears unavailable.**
-- [ ] **Step 3: Record the discovery checklist and secure evidence reference.** The user reports some authorized details are available, but exact link method, workflow, test pages, and staging access are not present in this repo; do not guess them or request secrets in chat.
-- [ ] **Step 4: Implement a fail-closed integration registry gate** and keep real-site integration disabled until every required field is verified.
-- [ ] **Step 5: Run `pnpm --filter @mark-1/extension test -- registry-policy`; confirm all incomplete integrations remain disabled.**
+- [x] **Step 1: Write failing registry-policy tests** proving that an integration with missing link verification, staging verification, approved workflows, or allowed actions cannot be enabled.
+- [x] **Step 2: Run `pnpm --filter @mark-1/extension test -- registry-policy`; confirm an unverified integration currently appears unavailable.**
+- [x] **Step 3: Record the discovery checklist and secure evidence reference.** The user reports some authorized details are available, but exact link method, workflow, test pages, and staging access are not present in this repo; do not guess them or request secrets in chat.
+- [x] **Step 4: Implement a fail-closed integration registry gate** and keep real-site integration disabled until every required field is verified.
+- [x] **Step 5: Run `pnpm --filter @mark-1/extension test -- registry-policy`; confirm all incomplete integrations remain disabled.**
 
 ## Task 2: Cross-component security, local integration environment, and release checks
 
@@ -74,11 +74,11 @@
 - `GET /health/live` reports process liveness only; `GET /health/ready` reports database and required dependency readiness without disclosing secrets.
 - `pnpm e2e` runs local web/API/PostgreSQL/mail-capture flow with provider stubs.
 
-- [ ] **Step 1: Write failing checks** for missing production secrets, unknown CORS origins, redacted logs/errors, migration failure handling, and unauthorized webhook rejection.
-- [ ] **Step 2: Run `pnpm test -- security release`; confirm the corresponding checks fail before implementation.**
-- [ ] **Step 3: Add Dockerfiles, local Compose services, readiness endpoints, strict production-env validation, and release-check scripts.** Do not include production secrets or actual platform identifiers in Compose, CI, or docs.
-- [ ] **Step 4: Add the E2E journey:** register and verify customer using mail capture; link through a fake test verifier; make a Razorpay sandbox/stub payment; process a signed webhook; verify entitlement; sign into extension; store a local test key; run a Gemini stub; exercise the local practice fixture; verify no question/key data reaches the MARK-1 API.
-- [ ] **Step 5: Run `pnpm lint && pnpm typecheck && pnpm test && pnpm e2e && pnpm build`; confirm all checks pass from a clean checkout.**
+- [x] **Step 1: Write failing checks** for missing production secrets, unknown CORS origins, redacted logs/errors, migration failure handling, and unauthorized webhook rejection.
+- [x] **Step 2: Run `pnpm test -- security release`; confirm the corresponding checks fail before implementation.**
+- [x] **Step 3: Add Dockerfiles, local Compose services, readiness endpoints, strict production-env validation, and release-check scripts.** Do not include production secrets or actual platform identifiers in Compose, CI, or docs.
+- [x] **Step 4: Add the E2E journey:** register and verify customer using mail capture; link through a fake test verifier; make a Razorpay sandbox/stub payment; process a signed webhook; verify entitlement; sign into extension; store a local test key; run a Gemini stub; exercise the local practice fixture; verify no question/key data reaches the MARK-1 API.
+- [x] **Step 5: Run `pnpm lint && pnpm typecheck && pnpm test && pnpm e2e && pnpm build`; confirm all checks pass from a clean checkout.**
 
 ## Task 3: Browser packages, deployment runbooks, and launch gates
 
@@ -91,10 +91,10 @@
 - `pnpm release:browser` creates separate versioned Chrome, Edge, and Brave packages from the same verified MV3 build.
 - `LaunchChecklist` has independent gates for platform authorization, email provider, Razorpay production credentials/webhooks, hosting/domain/TLS, backups/monitoring, privacy/security review, and explicit deployment/store approval.
 
-- [ ] **Step 1: Write failing tests** for package contents, version consistency, absence of development origins/secrets, and disabled real platform integrations when discovery evidence is incomplete.
-- [ ] **Step 2: Run `pnpm test -- browser-packages release-gates`; confirm these tests fail until packaging and gates exist.**
-- [ ] **Step 3: Implement browser packaging and runbooks.** Document setup and rollback without publishing to a store or deploying to a public environment.
-- [ ] **Step 4: Run `pnpm release:browser` and `pnpm test -- browser-packages release-gates`; confirm three valid browser artifacts and correct blocking gates.**
+- [x] **Step 1: Write failing tests** for package contents, version consistency, absence of development origins/secrets, and disabled real platform integrations when discovery evidence is incomplete.
+- [x] **Step 2: Run `pnpm test -- browser-packages release-gates`; confirm these tests fail until packaging and gates exist.**
+- [x] **Step 3: Implement browser packaging and runbooks.** Document setup and rollback without publishing to a store or deploying to a public environment.
+- [x] **Step 4: Run `pnpm release:browser` and `pnpm test -- browser-packages release-gates`; confirm three valid browser artifacts and correct blocking gates.**
 
 ## Production Go-Live Gate
 

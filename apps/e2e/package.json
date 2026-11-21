@@ -4,9 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node -e \"console.log('E2E tests not yet implemented')\""
+    "test": "playwright test",
+    "test:release": "playwright test tests/release-gates.spec.ts"
   },
   "devDependencies": {
+    "@playwright/test": "1.56.1",
     "playwright": "1.56.1"
   }
 }

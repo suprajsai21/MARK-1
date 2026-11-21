@@ -16,7 +16,7 @@ describe('entitlement routes', () => {
       getForUser: async (userId) => userId === user.id ? [{ productVersionId: 'mark1-v1', status: 'active' as const }] : [],
     });
     apps.push(app);
-    const response = await app.inject({ method: 'GET', url: '/v1/entitlement' });
+    const response = await app.inject({ method: 'GET', url: '/v1/entitlement?productVersionId=mark1-v1' });
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({ entitlements: [{ productVersionId: 'mark1-v1', status: 'active' }] });
   });
@@ -28,7 +28,7 @@ describe('entitlement routes', () => {
       getForUser: async () => { throw new Error('must not query'); },
     });
     apps.push(app);
-    const response = await app.inject({ method: 'GET', url: '/v1/entitlement' });
+    const response = await app.inject({ method: 'GET', url: '/v1/entitlement?productVersionId=mark1-v1' });
     expect(response.statusCode).toBe(401);
   });
 });

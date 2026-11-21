@@ -25,7 +25,7 @@ export function PricingPage({ api }: { api: PortalApi }) {
       {!loaded ? <p role="status">Loading current price…</p> : price ? (
         <p>Current price: ₹{(price.amountPaise / 100).toFixed(2)} INR · version {price.version}</p>
       ) : <p>No current price is configured.</p>}
-      <PriceForm key={price?.version ?? 'new'} api={api} initialAmountPaise={price?.amountPaise ?? ''} />
+      <PriceForm key={price?.version ?? 'new'} api={api} initialAmountPaise={price?.amountPaise ?? 4900} />
     </section>
   );
 }

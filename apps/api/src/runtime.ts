@@ -158,8 +158,7 @@ export function createRuntime(environment: RuntimeEnvironment, overrides: Runtim
 
   const prisma = createPrismaClient(databaseUrl);
   const paymentDatabase = overrides.paymentDatabase ?? new PrismaPaymentDatabase(prisma as unknown as PrismaPaymentDatabaseClient);
-  const pricing = overrides.pricingService ?? (overrides.paymentDatabase || razorpayKeyId
-    ? new PricingService({ database: paymentDatabase, productVersionId }) : undefined);
+  const pricing = overrides.pricingService ?? new PricingService({ database: paymentDatabase, productVersionId });
   const provider = overrides.razorpayClient ?? (razorpayKeyId && razorpayKeySecret
     ? new HttpRazorpayClient({ keyId: razorpayKeyId, keySecret: razorpayKeySecret }) : undefined);
   const webhookDatabase = overrides.webhookDatabase ?? (isWebhookDatabase(paymentDatabase) ? paymentDatabase : undefined);

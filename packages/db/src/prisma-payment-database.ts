@@ -184,6 +184,13 @@ export class PrismaPaymentDatabase {
             if (!order || order.amountPaise !== event.amountPaise || order.currency !== event.currency) {
               throw new Error('PAYMENT_MISMATCH');
             }
+            // Captured events may arrive after payment.failed; the provider's
+            // captured event is authoritative and the transition below handles it.
+            // A genuinely refunded or disputed order must never be reactivated.
+            // The event is still recorded so the provider stops retrying it.
+            if (order.status === 'refunded' || order.status === 'charged_back') {
+              return;
+            }
             const existing = await transaction.purchase.findFirst({ where: { orderId: order.id } });
             if (existing) {
               if (existing.providerPaymentId !== event.providerPaymentId) throw new Error('PAYMENT_MISMATCH');
@@ -194,7 +201,6 @@ export class PrismaPaymentDatabase {
             // unique-constraint error that could be misread as an event replay.
             const paidElsewhere = await transaction.purchase.findFirst({ where: { providerPaymentId: event.providerPaymentId } });
             if (paidElsewhere) throw new Error('PAYMENT_MISMATCH');
-            if (order.status === 'refunded' || order.status === 'charged_back') return;
             if (order.status === 'failed') {
               const changed = await transaction.paymentOrder.updateMany({ where: { id: order.id, status: 'failed' }, data: { status: 'paid' } });
               if (changed.count !== 1) throw new Error('PAYMENT_STATE_CONFLICT');

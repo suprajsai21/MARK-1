@@ -34,7 +34,7 @@ export function PriceForm({ api, initialAmountPaise = '' }: {
     <form onSubmit={(event) => { void save(event); }} aria-label="Set MARK-1 price">
       <label htmlFor="price-paise">Price in paise</label>
       <input id="price-paise" type="text" inputMode="numeric" value={amount} onChange={(event) => setAmount(event.target.value)} />
-      <p>Amounts are INR paise. For example, 19900 is ₹199.00 INR.</p>
+      <p>Amounts are INR paise. The initial one-time price is ₹49.00 (4900 paise).</p>
       <button type="submit" disabled={busy}>Save price</button>
       {notice && <p role={notice.tone === 'error' ? 'alert' : 'status'}>{notice.text}</p>}
     </form>

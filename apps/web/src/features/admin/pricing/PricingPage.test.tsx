@@ -28,7 +28,8 @@ describe('PricingPage', () => {
     } as unknown as PortalApi;
     render(<PricingPage api={api} />);
 
-    fireEvent.change(await screen.findByLabelText('Price in paise'), { target: { value: '1.5' } });
+    expect((await screen.findByLabelText('Price in paise') as HTMLInputElement).value).toBe('4900');
+    fireEvent.change(screen.getByLabelText('Price in paise'), { target: { value: '1.5' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save price' }));
     expect(await screen.findByRole('alert')).toBeTruthy();
     expect(api.setCurrentPrice).not.toHaveBeenCalled();

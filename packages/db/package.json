@@ -4,13 +4,17 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/client.ts"
+    ".": {
+      "types": "./dist/client.d.ts",
+      "import": "./dist/client.js",
+      "default": "./dist/client.js"
+    }
   },
   "scripts": {
     "lint": "eslint src",
     "typecheck": "prisma generate --schema prisma/schema.prisma && tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
-    "build": "prisma generate --schema prisma/schema.prisma",
+    "build": "prisma generate --schema prisma/schema.prisma && tsc -p tsconfig.build.json",
     "postinstall": "prisma generate --schema prisma/schema.prisma"
   },
   "devDependencies": {

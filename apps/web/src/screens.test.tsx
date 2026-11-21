@@ -241,6 +241,32 @@ describe('password recovery screens', () => {
 });
 
 describe('account API helpers', () => {
+  it('uses the server-authoritative pricing, checkout, and entitlement endpoints', async () => {
+    const responses = [
+      { price: { productVersionId: 'mark1-v1', amountPaise: 19900, currency: 'INR', version: 2 } },
+      { orderId: 'order-1', amountPaise: '19900', currency: 'INR', razorpayOrderId: 'rzp-order-1', checkoutKeyId: 'rzp_public' },
+      { order: { orderId: 'order-1', amountPaise: '19900', currency: 'INR', status: 'paid' } },
+      { entitlements: [{ productVersionId: 'mark1-v1', status: 'active' }] },
+      { productVersionId: 'mark1-v1', amountPaise: 25000, currency: 'INR', version: 3 },
+    ];
+    const fetcher = vi.fn().mockImplementation(async () => ({ ok: true, json: async () => responses.shift() }));
+    const api = new PortalApi('', fetcher);
+
+    await api.currentPrice();
+    await api.createCheckoutOrder();
+    await api.checkoutOrder('order-1');
+    await api.entitlements();
+    await api.setCurrentPrice({ productVersionId: 'mark1-v1', amountPaise: 25000 });
+
+    expect(fetcher.mock.calls.map(([url, init]) => [url, init.method, init.body])).toEqual([
+      ['/v1/pricing/current', undefined, undefined],
+      ['/v1/checkout/orders', 'POST', '{}'],
+      ['/v1/checkout/orders/order-1', undefined, undefined],
+      ['/v1/entitlement', undefined, undefined],
+      ['/v1/admin/pricing/current', 'PUT', JSON.stringify({ productVersionId: 'mark1-v1', amountPaise: 25000 })],
+    ]);
+  });
+
   it('posts credentials, single-use tokens, and explicit OAuth consent to the auth endpoints', async () => {
     const fetcher = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true, redirectUrl: 'https://extension.invalid/callback' }) });
     const api = new PortalApi('', fetcher);

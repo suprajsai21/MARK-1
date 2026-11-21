@@ -12,6 +12,26 @@ enum UserRole {
   admin
 }
 
+enum PaymentOrderStatus {
+  created
+  paid
+  failed
+  refunded
+  charged_back
+}
+
+enum EntitlementStatus {
+  active
+  revoked
+}
+
+enum MailAccountStatus {
+  connected
+  disconnected
+  needs_reauth
+  error
+}
+
 model User {
   id                  String                   @id @default(uuid()) @db.Uuid
   email               String                   @unique @db.VarChar(254)
@@ -28,6 +48,12 @@ model User {
   linkHistories       LinkHistory[]
   oauthAuthorizationCodes OAuthAuthorizationCode[]
   oauthTokenFamilies   OAuthTokenFamily[]
+  paymentOrders        PaymentOrder[]
+  purchases            Purchase[]
+  entitlements         Entitlement[]
+  mailAccounts        MailAccount[]
+  mailAuditEvents     MailAuditEvent[]
+  mailOAuthStates     MailOAuthState[]
 }
 
 model EmailVerificationToken {
@@ -175,4 +201,192 @@ model LinkPolicySetting {
   adminTransferApprovalRequired Boolean @default(true)
   updatedAt                 DateTime @default(now()) @updatedAt
   updatedById               String?  @db.Uuid
+}
+
+/**
+ * Append-only admin-managed price history. A checkout order copies the
+ * version's amount so a later price change cannot alter an existing order.
+ */
+model PriceVersion {
+  id               String   @id @default(uuid()) @db.Uuid
+  productVersionId String   @db.VarChar(64)
+  amountPaise      BigInt
+  currency         String   @db.VarChar(3)
+  version          Int
+  isCurrent        Boolean  @default(false)
+  createdById      String   @db.Uuid
+  createdAt        DateTime @default(now())
+  orders           PaymentOrder[]
+
+  @@unique([productVersionId, version])
+  @@index([productVersionId, isCurrent])
+}
+
+model PaymentOrder {
+  id               String             @id @default(uuid()) @db.Uuid
+  userId           String             @db.Uuid
+  productVersionId String             @db.VarChar(64)
+  amountPaise      BigInt
+  currency         String             @db.VarChar(3)
+  priceVersionId   String             @db.Uuid
+  priceVersion     Int
+  status           PaymentOrderStatus @default(created)
+  razorpayOrderId  String             @unique @db.VarChar(64)
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  user             User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  price            PriceVersion       @relation(fields: [priceVersionId], references: [id])
+  purchase         Purchase?
+
+  @@index([userId])
+  @@index([status])
+}
+
+/** Records a captured provider payment exactly once per provider payment ID. */
+model Purchase {
+  id                String      @id @default(uuid()) @db.Uuid
+  orderId           String      @unique @db.Uuid
+  userId            String      @db.Uuid
+  productVersionId  String      @db.VarChar(64)
+  amountPaise       BigInt
+  currency          String      @db.VarChar(3)
+  providerPaymentId String      @unique @db.VarChar(64)
+  capturedAt        DateTime    @default(now())
+  order             PaymentOrder @relation(fields: [orderId], references: [id])
+  user              User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  entitlement       Entitlement?
+  refunds           Refund[]
+
+  @@index([userId])
+}
+
+model Refund {
+  id                 String   @id @default(uuid()) @db.Uuid
+  purchaseId         String   @db.Uuid
+  providerRefundId   String   @unique @db.VarChar(64)
+  amountPaise        BigInt
+  reason             String   @db.VarChar(32)
+  createdAt          DateTime @default(now())
+  purchase           Purchase @relation(fields: [purchaseId], references: [id])
+
+  @@index([purchaseId])
+}
+
+model Entitlement {
+  id               String            @id @default(uuid()) @db.Uuid
+  purchaseId       String            @unique @db.Uuid
+  userId           String            @db.Uuid
+  productVersionId String            @db.VarChar(64)
+  status           EntitlementStatus @default(active)
+  grantedAt        DateTime          @default(now())
+  revokedAt        DateTime?
+  revokeReason     String?           @db.VarChar(32)
+  purchase         Purchase          @relation(fields: [purchaseId], references: [id])
+  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+}
+
+/**
+ * Verify-then-apply ledger: a provider event ID may only be processed once.
+ * `payloadDigest` records what was applied without storing card data.
+ */
+model PaymentEvent {
+  id              String   @id @default(uuid()) @db.Uuid
+  providerEventId String   @unique @db.VarChar(64)
+  eventType       String   @db.VarChar(64)
+  payloadDigest   String   @db.VarChar(64)
+  receivedAt      DateTime @default(now())
+  processedAt     DateTime?
+
+  @@index([eventType])
+  @@index([receivedAt])
+}
+
+model MailAccount {
+  id              String             @id @default(uuid()) @db.Uuid
+  userId          String             @db.Uuid
+  googleAccountId String             @db.VarChar(128)
+  email           String             @db.VarChar(254)
+  displayName     String?            @db.VarChar(256)
+  avatarUrl       String?            @db.VarChar(2048)
+  status          MailAccountStatus  @default(connected)
+  scopes          String             @db.Text
+  lastConnectedAt DateTime?
+  lastSyncAt      DateTime?
+  errorMessage    String?            @db.Text
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  user        User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  credential  MailOAuthCredential?
+  setting     MailAccountSetting?
+  auditEvents MailAuditEvent[]
+
+  @@unique([userId, email])
+  @@unique([userId, googleAccountId])
+  @@index([userId])
+  @@index([status])
+}
+
+model MailOAuthCredential {
+  id                    String      @id @default(uuid()) @db.Uuid
+  mailAccountId         String      @unique @db.Uuid
+  encryptedAccessToken  String      @db.Text
+  encryptedRefreshToken String?     @db.Text
+  tokenType             String      @default("Bearer") @db.VarChar(32)
+  expiresAt             DateTime?
+  keyVersion            Int         @default(1)
+  createdAt             DateTime    @default(now())
+  updatedAt             DateTime    @updatedAt
+
+  account MailAccount @relation(fields: [mailAccountId], references: [id], onDelete: Cascade)
+
+  @@index([mailAccountId])
+  @@index([expiresAt])
+}
+
+model MailAccountSetting {
+  id                   String      @id @default(uuid()) @db.Uuid
+  mailAccountId        String      @unique @db.Uuid
+  syncFrequencyMinutes Int         @default(15)
+  notifyOnSyncError    Boolean     @default(true)
+  syncEnabled          Boolean     @default(true)
+  createdAt            DateTime    @default(now())
+  updatedAt            DateTime    @updatedAt
+
+  account MailAccount @relation(fields: [mailAccountId], references: [id], onDelete: Cascade)
+}
+
+model MailAuditEvent {
+  id            String       @id @default(uuid()) @db.Uuid
+  userId        String       @db.Uuid
+  mailAccountId String?      @db.Uuid
+  eventType     String       @db.VarChar(64)
+  description   String       @db.VarChar(512)
+  metadata      String?      @db.Text
+  createdAt     DateTime     @default(now())
+
+  user    User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account MailAccount? @relation(fields: [mailAccountId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([mailAccountId])
+  @@index([createdAt])
+}
+
+model MailOAuthState {
+  id              String   @id @default(uuid()) @db.Uuid
+  userId          String   @db.Uuid
+  stateHash       String   @unique @db.VarChar(64)
+  codeVerifier    String   @db.VarChar(128)
+  redirectUri     String   @db.VarChar(2048)
+  targetAccountId String?  @db.Uuid
+  expiresAt       DateTime
+  createdAt       DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
 }

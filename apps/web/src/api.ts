@@ -1,5 +1,21 @@
+import type {
+  CompleteMailOAuthInput,
+  InitiateMailOAuthResponse,
+  MailAccountDetail,
+  MailAccountSettings,
+  MailAccountSummary,
+  MailHealthCheckResponse,
+  MailOverview,
+  MailSettings,
+  UpdateMailAccountSettingsInput,
+} from '@mark-1/contracts';
+
 export type Customer = { id: string; email: string; emailVerified: boolean; role: 'customer' | 'admin' };
 export type AccountLink = { linkId: string; integrationId: string };
+export type PriceSnapshot = { productVersionId: string; amountPaise: number; currency: 'INR'; version: number };
+export type CheckoutOrder = { orderId: string; amountPaise: string; currency: 'INR'; productVersionId: string; status: 'created' | 'paid' | 'failed' | 'refunded' | 'charged_back' };
+export type CheckoutSession = { orderId: string; amountPaise: string; currency: 'INR'; productVersionId: string; razorpayOrderId: string; checkoutKeyId: string };
+export type Entitlement = { productVersionId: string; status: 'active' | 'revoked' };
 
 type Fetcher = typeof fetch;
 
@@ -105,10 +121,90 @@ export class PortalApi {
     return this.request('/v1/links');
   }
 
+  async currentPrice(): Promise<{ price: PriceSnapshot | null }> {
+    return this.request('/v1/pricing/current');
+  }
+
+  async createCheckoutOrder(): Promise<CheckoutSession> {
+    return this.request('/v1/checkout/orders', { method: 'POST', body: JSON.stringify({}) });
+  }
+
+  async checkoutOrder(orderId: string): Promise<{ order: CheckoutOrder }> {
+    return this.request(`/v1/checkout/orders/${encodeURIComponent(orderId)}`);
+  }
+
+  async entitlements(): Promise<{ entitlements: Entitlement[] }> {
+    return this.request('/v1/entitlement');
+  }
+
+  async setCurrentPrice(input: { productVersionId: string; amountPaise: number }): Promise<PriceSnapshot> {
+    return this.request('/v1/admin/pricing/current', { method: 'PUT', body: JSON.stringify(input) });
+  }
+
   async unlink(linkId: string, challengeId: string, proof: string): Promise<{ unlinked: true }> {
     return this.request(`/v1/links/${encodeURIComponent(linkId)}`, {
       method: 'DELETE',
       body: JSON.stringify({ challengeId, proof }),
     });
+  }
+
+  /* ---------------- MARK-1 MAIL METHODS ---------------- */
+
+  async getMailOverview(): Promise<MailOverview> {
+    return this.request('/v1/mail/overview');
+  }
+
+  async listMailAccounts(): Promise<{ accounts: MailAccountSummary[] }> {
+    return this.request('/v1/mail/accounts');
+  }
+
+  async initiateMailConnect(redirectUrl?: string): Promise<InitiateMailOAuthResponse> {
+    return this.request('/v1/mail/accounts/connect/start', {
+      method: 'POST',
+      body: JSON.stringify(redirectUrl ? { redirectUrl } : {}),
+    });
+  }
+
+  async completeMailOAuth(input: CompleteMailOAuthInput): Promise<{ account: MailAccountSummary }> {
+    return this.request('/v1/mail/accounts/connect/callback', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  }
+
+  async getMailAccount(accountId: string): Promise<{ account: MailAccountDetail }> {
+    return this.request(`/v1/mail/accounts/${encodeURIComponent(accountId)}`);
+  }
+
+  async checkMailAccountHealth(accountId: string): Promise<MailHealthCheckResponse> {
+    return this.request(`/v1/mail/accounts/${encodeURIComponent(accountId)}/health`);
+  }
+
+  async initiateMailReconnect(accountId: string, redirectUrl?: string): Promise<InitiateMailOAuthResponse> {
+    return this.request(`/v1/mail/accounts/${encodeURIComponent(accountId)}/reconnect/start`, {
+      method: 'POST',
+      body: JSON.stringify(redirectUrl ? { redirectUrl } : {}),
+    });
+  }
+
+  async disconnectMailAccount(accountId: string, confirmEmail?: string): Promise<{ disconnected: true }> {
+    return this.request(`/v1/mail/accounts/${encodeURIComponent(accountId)}/disconnect`, {
+      method: 'POST',
+      body: JSON.stringify(confirmEmail ? { confirmEmail } : {}),
+    });
+  }
+
+  async updateMailAccountSettings(
+    accountId: string,
+    settings: UpdateMailAccountSettingsInput,
+  ): Promise<{ settings: MailAccountSettings }> {
+    return this.request(`/v1/mail/accounts/${encodeURIComponent(accountId)}/settings`, {
+      method: 'PATCH',
+      body: JSON.stringify(settings),
+    });
+  }
+
+  async getMailSettings(): Promise<{ settings: MailSettings }> {
+    return this.request('/v1/mail/settings');
   }
 }

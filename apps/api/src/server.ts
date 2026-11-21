@@ -9,8 +9,18 @@ import { registerLinkRoutes } from './modules/links/routes.js';
 import { sessionTokenFromRequest } from './plugins/auth.js';
 import { cookieAuthenticator, registerOAuthRoutes } from './modules/oauth/routes.js';
 import type { OAuthService } from './modules/oauth/service.js';
+import { registerMailRoutes } from './modules/mail/routes.js';
+import type { MailService } from './modules/mail/service.js';
 import { createRuntime } from './runtime.js';
 import type { RuntimeEnvironment, RuntimeOverrides } from './runtime.js';
+import { registerPricingRoutes } from './modules/pricing/routes.js';
+import { registerCheckoutRoutes } from './modules/payments/routes.js';
+import type { PricingService } from './modules/pricing/service.js';
+import type { CheckoutService } from './modules/payments/service.js';
+import type { WebhookService } from './modules/payments/webhook-service.js';
+import { registerWebhookRoutes } from './modules/payments/webhook-routes.js';
+import { registerEntitlementRoutes } from './modules/payments/entitlement-routes.js';
+import { registerHealthRoutes } from './health.js';
 
 export type ServerOptions = {
   auth: AuthService;
@@ -22,6 +32,15 @@ export type ServerOptions = {
   verifier?: PlatformLinkVerifier | null;
   subjectHmacSecret?: string;
   oauth?: OAuthService;
+  mail?: MailService;
+  pricing?: PricingService;
+  checkout?: CheckoutService;
+  webhook?: WebhookService;
+  webhookSecret?: string;
+  entitlementLookup?: (userId: string, productVersionId: string) => Promise<Array<{ productVersionId: string; status: 'active' | 'revoked' }>>;
+  /** Dependency probe for readiness. Omitted for in-memory test servers. */
+  readinessCheck?: () => Promise<void>;
+  checkRequiredDependencies?: () => Promise<void>;
 };
 
 /**
@@ -32,7 +51,13 @@ export type ServerOptions = {
  */
 export function buildServer(options: ServerOptions): FastifyInstance {
   const app = Fastify({ logger: false });
-  app.get('/health/live', async () => ({ status: 'ok' }));
+  registerHealthRoutes(app, {
+    checkDatabase: options.readinessCheck ?? (async () => { throw new Error('DATABASE_NOT_CONFIGURED'); }),
+    checkRequiredDependencies: options.checkRequiredDependencies ?? (async () => {
+      if (!options.oauth) throw new Error('OAUTH_NOT_CONFIGURED');
+      if (!options.entitlementLookup) throw new Error('ENTITLEMENT_LOOKUP_NOT_CONFIGURED');
+    }),
+  });
   registerAuthRoutes(app, options);
 
   if (options.linkDatabase || options.links) {
@@ -55,11 +80,48 @@ export function buildServer(options: ServerOptions): FastifyInstance {
     });
   }
 
+  if (options.pricing) {
+    registerPricingRoutes(app, {
+      pricing: options.pricing,
+      authenticate: async (request) => {
+        const token = sessionTokenFromRequest(request);
+        return token ? options.auth.authenticateSession(token) : null;
+      },
+      allowedOrigin: options.allowedOrigin,
+    });
+  }
+  const authenticate = async (request: Parameters<typeof sessionTokenFromRequest>[0]) => {
+    const token = sessionTokenFromRequest(request);
+    return token ? options.auth.authenticateSession(token) : null;
+  };
+  if (options.checkout) {
+    registerCheckoutRoutes(app, {
+      checkout: options.checkout,
+      authenticate,
+      allowedOrigin: options.allowedOrigin,
+    });
+  }
+  if (options.webhook) {
+    registerWebhookRoutes(app, { secret: options.webhookSecret ?? '', process: (input) => options.webhook!.process(input) });
+  }
+  if (options.entitlementLookup) {
+    registerEntitlementRoutes(app, { authenticate, getForUser: (userId) => options.entitlementLookup!(userId, 'mark1-v1') });
+  }
+
   if (options.oauth) {
     registerOAuthRoutes(app, {
       oauth: options.oauth,
       allowedOrigin: options.allowedOrigin,
       authenticate: cookieAuthenticator((token) => options.auth.authenticateSession(token)),
+      ...(options.rateLimit ? { rateLimit: options.rateLimit } : {}),
+    });
+  }
+
+  if (options.mail) {
+    registerMailRoutes(app, {
+      mail: options.mail,
+      auth: options.auth,
+      allowedOrigin: options.allowedOrigin,
       ...(options.rateLimit ? { rateLimit: options.rateLimit } : {}),
     });
   }
@@ -80,12 +142,24 @@ export function buildConfiguredServer(
   overrides: RuntimeOverrides = {},
 ): FastifyInstance {
   const runtime = createRuntime(environment, overrides);
-  return buildServer({
+  const app = buildServer({
     auth: runtime.auth,
     allowedOrigin: runtime.allowedOrigin,
     ...(runtime.linkDatabase ? { linkDatabase: runtime.linkDatabase } : {}),
     verifier: runtime.verifier,
     subjectHmacSecret: runtime.subjectHmacSecret,
     ...(runtime.oauth ? { oauth: runtime.oauth } : {}),
+    ...(runtime.mail ? { mail: runtime.mail } : {}),
+    ...(runtime.pricing ? { pricing: runtime.pricing } : {}),
+    ...(runtime.checkout ? { checkout: runtime.checkout } : {}),
+    ...(runtime.webhook ? { webhook: runtime.webhook } : {}),
+    ...(runtime.entitlementLookup ? { entitlementLookup: runtime.entitlementLookup } : {}),
+    webhookSecret: environment.RAZORPAY_WEBHOOK_SECRET?.trim() ?? '',
+    ...(runtime.prisma ? { readinessCheck: async () => { await runtime.prisma!.$queryRaw`SELECT 1`; } } : {}),
+    checkRequiredDependencies: async () => {
+      if (!runtime.oauth) throw new Error('OAUTH_NOT_CONFIGURED');
+      if (!runtime.entitlementLookup) throw new Error('ENTITLEMENT_LOOKUP_NOT_CONFIGURED');
+    },
   });
+  return app;
 }

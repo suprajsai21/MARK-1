@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { AccountLink, Customer, PortalApi } from './api.js';
 import { ExtensionConsentPage } from './features/auth/ExtensionConsentPage.js';
+import { MailDashboard } from './features/mail/MailDashboard.js';
+import { MailCallbackScreen } from './features/mail/MailCallbackScreen.js';
 
 type PortalRoute = { pathname: string; search: string };
 type PortalNavigate = (url: string) => void;
@@ -135,6 +137,25 @@ export function CustomerPortal({
 
       {current.pathname === '/verify-email' && <VerifyEmailScreen api={api} token={tokenFrom(current.search)} />}
       {current.pathname === '/password/reset' && <ResetPasswordScreen api={api} token={tokenFrom(current.search)} />}
+      {current.pathname === '/mail/callback' && (
+        <MailCallbackScreen
+          api={api}
+          search={current.search}
+          onFinished={() => {
+            if (navigate) navigate('/mail');
+            else if (typeof window !== 'undefined') window.location.href = '/mail';
+          }}
+        />
+      )}
+      {current.pathname.startsWith('/mail') && current.pathname !== '/mail/callback' && session.status === 'authenticated' && (
+        <MailDashboard
+          api={api}
+          onNavigatePortal={() => {
+            if (navigate) navigate('/');
+            else if (typeof window !== 'undefined') window.location.href = '/';
+          }}
+        />
+      )}
       {current.pathname === '/oauth/authorize' && session.status === 'authenticated' && (
         <ExtensionConsentScreen api={api} search={current.search} {...(navigate ? { navigate } : {})} />
       )}
@@ -203,6 +224,20 @@ export function CustomerPortal({
                   verification flow.
                 </p>
               </section>
+
+              <section aria-labelledby="mail-portal-heading">
+                <h3 id="mail-portal-heading">MARK-1 MAIL</h3>
+                <p>Manage multiple individually authorized Gmail mailboxes and synchronization settings.</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (navigate) navigate('/mail');
+                    else if (typeof window !== 'undefined') window.location.href = '/mail';
+                  }}
+                >
+                  Open MARK-1 MAIL
+                </button>
+              </section>
             </section>
           )}
 
@@ -221,7 +256,13 @@ function describe(error: unknown, fallback: string): string {
 
 /** Routes that render a single-purpose screen instead of the account view. */
 function isScreenRoute(pathname: string): boolean {
-  return pathname === '/verify-email' || pathname === '/password/reset';
+  return (
+    pathname === '/verify-email' ||
+    pathname === '/password/reset' ||
+    pathname === '/mail' ||
+    pathname === '/mail/callback' ||
+    pathname.startsWith('/mail/')
+  );
 }
 
 function tokenFrom(search: string): string | null {

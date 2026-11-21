@@ -9,6 +9,8 @@ import { registerLinkRoutes } from './modules/links/routes.js';
 import { sessionTokenFromRequest } from './plugins/auth.js';
 import { cookieAuthenticator, registerOAuthRoutes } from './modules/oauth/routes.js';
 import type { OAuthService } from './modules/oauth/service.js';
+import { registerMailRoutes } from './modules/mail/routes.js';
+import type { MailService } from './modules/mail/service.js';
 import { createRuntime } from './runtime.js';
 import type { RuntimeEnvironment, RuntimeOverrides } from './runtime.js';
 
@@ -22,6 +24,7 @@ export type ServerOptions = {
   verifier?: PlatformLinkVerifier | null;
   subjectHmacSecret?: string;
   oauth?: OAuthService;
+  mail?: MailService;
 };
 
 /**
@@ -64,6 +67,15 @@ export function buildServer(options: ServerOptions): FastifyInstance {
     });
   }
 
+  if (options.mail) {
+    registerMailRoutes(app, {
+      mail: options.mail,
+      auth: options.auth,
+      allowedOrigin: options.allowedOrigin,
+      ...(options.rateLimit ? { rateLimit: options.rateLimit } : {}),
+    });
+  }
+
   return app;
 }
 
@@ -87,5 +99,6 @@ export function buildConfiguredServer(
     verifier: runtime.verifier,
     subjectHmacSecret: runtime.subjectHmacSecret,
     ...(runtime.oauth ? { oauth: runtime.oauth } : {}),
+    ...(runtime.mail ? { mail: runtime.mail } : {}),
   });
 }

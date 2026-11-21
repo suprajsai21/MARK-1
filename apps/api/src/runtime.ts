@@ -2,10 +2,13 @@ import type { AuthService } from './modules/auth/service.js';
 import { AuthService as AuthServiceClass } from './modules/auth/service.js';
 import type { EmailSender } from './modules/auth/email-sender.js';
 import { createEmailSender } from './modules/auth/email-sender.js';
-import type { AuthDatabase, AuthRepository, PrismaLinkDatabaseClient, PrismaOAuthDatabase } from '@mark-1/db';
-import { createPrismaClient, PrismaAuthRepository, PrismaLinkDatabase, PrismaOAuthStore } from '@mark-1/db';
+import type { AuthDatabase, AuthRepository, PrismaLinkDatabaseClient, PrismaOAuthDatabase, PrismaMailDatabaseClient, MailDatabase } from '@mark-1/db';
+import { createPrismaClient, PrismaAuthRepository, PrismaLinkDatabase, PrismaOAuthStore, PrismaMailDatabase, validateEncryptionKey } from '@mark-1/db';
 import { OAuthService } from './modules/oauth/service.js';
 import type { LinkDatabase, PlatformLinkVerifier } from './modules/links/service.js';
+import { MailService } from './modules/mail/service.js';
+import type { GoogleOAuthClient } from './modules/mail/google-client.js';
+import { FetchGoogleOAuthClient } from './modules/mail/google-client.js';
 
 export type RuntimeEnvironment = {
   DATABASE_URL?: string | undefined;
@@ -16,6 +19,10 @@ export type RuntimeEnvironment = {
   LINK_SUBJECT_HMAC_SECRET?: string | undefined;
   OAUTH_CLIENT_ID?: string | undefined;
   OAUTH_REDIRECT_URIS?: string | undefined;
+  MAIL_TOKEN_ENCRYPTION_KEY?: string | undefined;
+  GOOGLE_CLIENT_ID?: string | undefined;
+  GOOGLE_CLIENT_SECRET?: string | undefined;
+  GOOGLE_REDIRECT_URI?: string | undefined;
 };
 
 export type RuntimeOverrides = {
@@ -25,6 +32,10 @@ export type RuntimeOverrides = {
   verifier?: PlatformLinkVerifier | null;
   subjectHmacSecret?: string;
   oauthService?: OAuthService;
+  mailDatabase?: MailDatabase;
+  mailService?: MailService;
+  googleClient?: GoogleOAuthClient;
+  mailEncryptionKey?: Buffer;
 };
 
 export type Runtime = {
@@ -34,6 +45,8 @@ export type Runtime = {
   verifier: PlatformLinkVerifier | null;
   subjectHmacSecret: string;
   oauth?: OAuthService;
+  mail?: MailService;
+  mailDatabase?: MailDatabase;
   prisma?: ReturnType<typeof createPrismaClient>;
 };
 
@@ -74,7 +87,39 @@ export function createRuntime(environment: RuntimeEnvironment, overrides: Runtim
   // Never select an external verifier from an unreviewed environment string.
   const verifier = overrides.verifier ?? null;
 
+  const mailClientId = environment.GOOGLE_CLIENT_ID?.trim();
+  const mailClientSecret = environment.GOOGLE_CLIENT_SECRET?.trim() ?? '';
+  const mailRedirectUri = environment.GOOGLE_REDIRECT_URI?.trim() || `${allowedOrigin}/mail/callback`;
+
+  let mailEncryptionKey = overrides.mailEncryptionKey;
+  if (!mailEncryptionKey && environment.MAIL_TOKEN_ENCRYPTION_KEY?.trim()) {
+    mailEncryptionKey = validateEncryptionKey(environment.MAIL_TOKEN_ENCRYPTION_KEY);
+  }
+
+  if (environment.NODE_ENV === 'production' && mailClientId && !mailEncryptionKey) {
+    throw new Error('MAIL_TOKEN_ENCRYPTION_KEY_REQUIRED');
+  }
+
+  const googleClient = overrides.googleClient ?? new FetchGoogleOAuthClient();
+
+  const buildMailService = (db: MailDatabase): MailService | undefined => {
+    if (overrides.mailService) return overrides.mailService;
+    if (mailEncryptionKey && mailClientId) {
+      return new MailService({
+        database: db,
+        googleClient,
+        encryptionKey: mailEncryptionKey,
+        clientId: mailClientId,
+        clientSecret: mailClientSecret,
+        defaultRedirectUri: mailRedirectUri,
+      });
+    }
+    return undefined;
+  };
+
   if (overrides.repository) {
+    const mailDb = overrides.mailDatabase;
+    const mail = mailDb ? buildMailService(mailDb) : overrides.mailService;
     return {
       auth: new AuthServiceClass({
         repository: overrides.repository,
@@ -84,12 +129,17 @@ export function createRuntime(environment: RuntimeEnvironment, overrides: Runtim
       allowedOrigin,
       ...(overrides.linkDatabase ? { linkDatabase: overrides.linkDatabase } : {}),
       ...(overrides.oauthService ? { oauth: overrides.oauthService } : {}),
+      ...(mail ? { mail } : {}),
+      ...(mailDb ? { mailDatabase: mailDb } : {}),
       verifier,
       subjectHmacSecret,
     };
   }
 
   const prisma = createPrismaClient(databaseUrl);
+  const mailDb = overrides.mailDatabase ?? new PrismaMailDatabase(prisma as unknown as PrismaMailDatabaseClient);
+  const mail = buildMailService(mailDb);
+
   return {
     auth: new AuthServiceClass({
       repository: new PrismaAuthRepository(prisma as unknown as AuthDatabase),
@@ -105,6 +155,8 @@ export function createRuntime(environment: RuntimeEnvironment, overrides: Runtim
         redirectUris: oauthRedirectUris,
       }),
     } : {}),
+    ...(mail ? { mail } : {}),
+    mailDatabase: mailDb,
     verifier,
     subjectHmacSecret,
     prisma,

@@ -23,6 +23,12 @@ describe('configured API server', () => {
     const response = await app.inject({ method: 'GET', url: '/v1/me' });
     expect(response.statusCode).toBe(401);
     expect(response.json().code).toBe('UNAUTHENTICATED');
+    const live = await app.inject({ method: 'GET', url: '/health/live' });
+    const ready = await app.inject({ method: 'GET', url: '/health/ready' });
+    expect(live.statusCode).toBe(200);
+    // The fixture has no DB connection; health must not claim readiness.
+    expect(ready.statusCode).toBe(503);
+    expect(ready.json()).toEqual({ status: 'not_ready' });
     await app.close();
   });
 

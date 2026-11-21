@@ -4,7 +4,7 @@
   "packageManager": "pnpm@12.21.0",
   "scripts": {
     "lint": "corepack pnpm --recursive --if-present lint",
-    "typecheck": "corepack pnpm --recursive --if-present typecheck",
+    "typecheck": "corepack pnpm --filter @mark-1/contracts build && corepack pnpm --filter @mark-1/db build && corepack pnpm --recursive --if-present typecheck",
     "test": "corepack pnpm --recursive --if-present test",
     "e2e": "corepack pnpm --filter @mark-1/e2e test",
     "release:browser": "node scripts/release/package-browsers.mjs",

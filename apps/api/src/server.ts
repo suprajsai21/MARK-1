@@ -157,8 +157,9 @@ export function buildConfiguredServer(
     webhookSecret: environment.RAZORPAY_WEBHOOK_SECRET?.trim() ?? '',
     ...(runtime.prisma ? { readinessCheck: async () => { await runtime.prisma!.$queryRaw`SELECT 1`; } } : {}),
     checkRequiredDependencies: async () => {
-      if (!runtime.oauth) throw new Error('OAUTH_NOT_CONFIGURED');
-      if (!runtime.entitlementLookup) throw new Error('ENTITLEMENT_LOOKUP_NOT_CONFIGURED');
+      // OAuth is feature-gated; it may be disabled for local/staging deployments.
+      // Paid entitlements are only required if the paid checkout flow is enabled.
+      if (runtime.checkout && !runtime.entitlementLookup) throw new Error('ENTITLEMENT_LOOKUP_NOT_CONFIGURED');
     },
   });
   return app;

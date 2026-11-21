@@ -7,7 +7,11 @@
     "lint": "eslint src",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run --passWithNoTests",
-    "build": "tsc -p tsconfig.json"
+    "start": "node dist/main.js",
+    "build": "tsc -p tsconfig.json",
+    "db:generate": "prisma generate --schema ../../packages/db/prisma/schema.prisma",
+    "db:migrate:deploy": "prisma migrate deploy --schema ../../packages/db/prisma/schema.prisma",
+    "db:migrate:status": "prisma migrate status --schema ../../packages/db/prisma/schema.prisma"
   },
   "dependencies": {
     "@mark-1/contracts": "workspace:*",

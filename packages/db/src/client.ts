@@ -144,6 +144,8 @@ export type {
 } from './mail-database.js';
 export { PrismaMailDatabase } from './prisma-mail-database.js';
 export type { PrismaMailDatabaseClient, PrismaMailAccountRow } from './prisma-mail-database.js';
+export { PrismaPaymentDatabase } from './prisma-payment-database.js';
+export type { PaymentDatabaseClient as PrismaPaymentDatabaseClient } from './prisma-payment-database.js';
 
 /** Creates the durable client from a configured PostgreSQL URL. */
 export function createPrismaClient(databaseUrl: string): PrismaClient {

@@ -62,3 +62,5 @@ export type {
   ReconnectMailAccountInput,
   UpdateMailAccountSettingsInput,
 } from './mail.js';
+export { EntitlementStatusSchema, PaymentOrderStatusSchema, PriceSnapshotSchema } from './payments.js';
+export type { EntitlementStatus, PaymentOrderStatus, PriceSnapshot } from './payments.js';

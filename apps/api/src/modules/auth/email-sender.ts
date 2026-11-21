@@ -64,6 +64,8 @@ export type EmailEnvironment = {
   NODE_ENV?: string | undefined;
   EMAIL_FROM?: string | undefined;
   SMTP_URL?: string | undefined;
+  /** Optional explicit transport security setting; defaults are inferred safely from the URL. */
+  SMTP_SECURE?: string | undefined;
 };
 
 const PLACEHOLDER_PREFIX = 'replace-with';
@@ -95,13 +97,37 @@ export function createEmailSender(environment: EmailEnvironment): EmailSender {
   } catch {
     throw new Error('EMAIL_PROVIDER_NOT_CONFIGURED');
   }
-  const secure = parsed.protocol === 'smtps:' || parsed.searchParams.get('secure') === 'true';
+  const secureOverride = environment.SMTP_SECURE?.trim().toLowerCase();
+  if (secureOverride && secureOverride !== 'true' && secureOverride !== 'false') {
+    throw new Error('EMAIL_PROVIDER_NOT_CONFIGURED');
+  }
+  const secure = parsed.protocol === 'smtps:' || parsed.searchParams.get('secure') === 'true' || secureOverride === 'true';
   if (parsed.protocol !== 'smtp:' && parsed.protocol !== 'smtps:') {
+    throw new Error('EMAIL_PROVIDER_NOT_CONFIGURED');
+  }
+  if (parsed.protocol === 'smtps:' && secureOverride === 'false') {
     throw new Error('EMAIL_PROVIDER_NOT_CONFIGURED');
   }
   if (environment.NODE_ENV === 'production' && !secure) {
     throw new Error('EMAIL_PROVIDER_NOT_CONFIGURED');
   }
+  if (environment.NODE_ENV === 'production' && (!parsed.username || !parsed.password)) {
+    throw new Error('EMAIL_PROVIDER_NOT_CONFIGURED');
+  }
 
-  return new SmtpEmailSender(createTransport(smtpUrl), from);
+  const port = Number(parsed.port || (secure ? 465 : 587));
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new Error('EMAIL_PROVIDER_NOT_CONFIGURED');
+  }
+  const secureTransport = secure && (port === 465 || port === 2465 || parsed.protocol === 'smtps:');
+  return new SmtpEmailSender(createTransport({
+    host: parsed.hostname,
+    port,
+    secure: secureTransport,
+    requireTLS: !secureTransport && secure,
+    auth: parsed.username || parsed.password ? {
+      user: decodeURIComponent(parsed.username),
+      pass: decodeURIComponent(parsed.password),
+    } : undefined,
+  }), from);
 }

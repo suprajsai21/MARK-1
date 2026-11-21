@@ -25,6 +25,7 @@ export type RuntimeEnvironment = {
   NODE_ENV?: string | undefined;
   EMAIL_FROM?: string | undefined;
   SMTP_URL?: string | undefined;
+  SMTP_SECURE?: string | undefined;
   LINK_SUBJECT_HMAC_SECRET?: string | undefined;
   OAUTH_CLIENT_ID?: string | undefined;
   OAUTH_REDIRECT_URIS?: string | undefined;

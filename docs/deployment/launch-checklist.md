@@ -15,7 +15,7 @@ This runbook tracks the strict operational gates required before public producti
 - [x] **Zero Secrets Policy:** No credentials or database passwords stored in source control or exposed in logs.
 
 ## 3. External Integrations Gate
-- [ ] **Email Provider (SMTP):** Production SMTP credentials configured (`SMTP_URL` with TLS/secure flag, `EMAIL_FROM`).
+- [ ] **Email Provider (Resend SMTP):** Verified sender domain, `EMAIL_FROM`, and `SMTP_URL` plus `SMTP_SECURE=true` stored in Railway API variables; verify live delivery. See [`MARK1_RESEND_SETUP.md`](../MARK1_RESEND_SETUP.md).
 - [ ] **Razorpay Payment Gateway:** Production or active test API credentials configured (`RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET`).
 - [ ] **Razorpay Webhook Registration:** Endpoint `POST /v1/checkout/webhook` registered with matching secret in Razorpay dashboard.
 - [x] **Fail-Closed Coursework Adapters:** Academic platform adapters (e.g. CodeTantra) safely disabled in registry pending authorized verification.

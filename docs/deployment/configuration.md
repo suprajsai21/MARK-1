@@ -11,7 +11,7 @@ present and valid. `HOST` and `PORT` are listener options, not security policy.
 | `DATABASE_URL` | PostgreSQL connection string | Use the Neon **pooled** connection string for the API; add `?sslmode=require`. |
 | `WEB_ORIGIN` | Exact allowed browser origin for CORS and OAuth redirects | No trailing slash, e.g. `https://mark1.example.com`. |
 | `EMAIL_FROM` | Verified sender address for auth emails | Required; the server refuses to start if missing or malformed. |
-| `SMTP_URL` | SMTP transport connection URL | Required; configure TLS and valid SMTP credentials in the host's secret store. |
+| `SMTP_URL` | SMTP transport connection URL | Required; store it in the host secret store. For Resend, use `smtp://resend:<URL_ENCODED_API_KEY>@smtp.resend.com:587` with `SMTP_SECURE=true` (STARTTLS), or port `465` for implicit TLS. |
 | `PORT` | Listen port | Defaults to `3000`. Must be `1–65535`. |
 | `HOST` | Listen address | Defaults to `0.0.0.0`. |
 

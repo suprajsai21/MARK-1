@@ -19,6 +19,8 @@ describe('settings panel', () => {
     );
     expect(markup).toMatch(/type="password"/);
     expect(markup).toMatch(/browser profile/i);
-    expect(markup).toMatch(/aria-label="Gemini API key" value=""/);
+    expect(markup).toMatch(/<label[^>]*for="gemini-key"[^>]*>Gemini API key<\/label>/);
+    expect(markup).toMatch(/<input id="gemini-key"[^>]*value=""/);
+    expect(markup).not.toMatch(/value="[^"]+"/);
   });
 });

@@ -38,9 +38,10 @@ export default defineBackground(() => {
     sessionStore: createChromeSessionStore(storage),
     localStorage: storage,
     signOut: () => lifecycle.clear(),
-    apiBaseUrl: values.WXT_API_BASE_URL,
-    oauthClientId: values.WXT_OAUTH_CLIENT_ID,
-    productVersionId: values.WXT_PRODUCT_VERSION_ID,
+    apiBaseUrl: values.WXT_API_BASE_URL || 'http://localhost:3000',
+    webBaseUrl: values.WXT_WEB_BASE_URL || 'http://localhost:5173',
+    oauthClientId: values.WXT_OAUTH_CLIENT_ID || 'mark1-extension',
+    productVersionId: values.WXT_PRODUCT_VERSION_ID || 'mark1-v1',
     runInPage: async <T>(fn: () => T): Promise<T | null | undefined> => {
       const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
       if (!tab?.id) return null;

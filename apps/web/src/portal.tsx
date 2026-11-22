@@ -248,6 +248,12 @@ export function CustomerPortal({
                 </p>
               </section>
 
+              <section aria-labelledby="extension-portal-heading">
+                <h3 id="extension-portal-heading">MARK-1 Learning Assistant (Extension)</h3>
+                <p>Private, user-controlled study assistant sidepanel with Gemini BYOK.</p>
+                <p>Open the extension in Chrome and click &quot;Continue to sign in&quot; to authorize this account.</p>
+              </section>
+
               <section aria-labelledby="mail-portal-heading">
                 <h3 id="mail-portal-heading">MARK-1 MAIL</h3>
                 <p>Manage multiple individually authorized Gmail mailboxes and synchronization settings.</p>

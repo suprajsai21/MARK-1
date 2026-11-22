@@ -28,13 +28,13 @@ export type OAuthRefreshRotationRecord = {
 
 type CodeRow = OAuthAuthorizationCodeRecord;
 type FamilyRow = { id: string; userId: string; clientId: string; revokedAt: Date | null };
-type AccessRow = { familyId: string; expiresAt: Date; family: FamilyRow };
+type AccessRow = { familyId: string; expiresAt: Date; family?: FamilyRow | null };
 type RefreshRow = {
   tokenHash: string;
   familyId: string;
   expiresAt: Date;
   consumedAt: Date | null;
-  family: FamilyRow;
+  family?: FamilyRow | null;
 };
 
 type OAuthAuthorizationCodeDelegate = {
@@ -49,11 +49,11 @@ type OAuthTokenFamilyDelegate = {
 };
 type OAuthAccessTokenDelegate = {
   create(args: { data: { tokenHash: string; familyId: string; expiresAt: Date } }): Promise<unknown>;
-  findUnique(args: { where: { tokenHash: string } }): Promise<AccessRow | null>;
+  findUnique(args: { where: { tokenHash: string }; include?: { family: true } }): Promise<AccessRow | null>;
 };
 type OAuthRefreshTokenDelegate = {
   create(args: { data: { tokenHash: string; familyId: string; expiresAt: Date } }): Promise<unknown>;
-  findUnique(args: { where: { tokenHash: string } }): Promise<RefreshRow | null>;
+  findUnique(args: { where: { tokenHash: string }; include?: { family: true } }): Promise<RefreshRow | null>;
   updateMany(args: {
     where: { tokenHash: string; consumedAt: null; expiresAt: { gt: Date } };
     data: { consumedAt: Date };
@@ -62,7 +62,7 @@ type OAuthRefreshTokenDelegate = {
 
 export type OAuthTransaction = {
   oauthAuthorizationCode: Pick<OAuthAuthorizationCodeDelegate, 'findUnique' | 'deleteMany'>;
-  oauthTokenFamily: Pick<OAuthTokenFamilyDelegate, 'create' | 'updateMany'>;
+  oauthTokenFamily: Pick<OAuthTokenFamilyDelegate, 'create' | 'findUnique' | 'updateMany'>;
   oauthAccessToken: Pick<OAuthAccessTokenDelegate, 'create' | 'findUnique'>;
   oauthRefreshToken: Pick<OAuthRefreshTokenDelegate, 'create' | 'findUnique' | 'updateMany'>;
 };
@@ -75,19 +75,33 @@ export type OAuthDatabase = OAuthTransaction & {
   $transaction<T>(callback: (transaction: OAuthTransaction) => Promise<T>): Promise<T>;
 };
 
+// Helper accessors that support both real Prisma client (oAuth*) and test doubles (oauth*)
+function getCodeDelegate(db: any): OAuthAuthorizationCodeDelegate {
+  return db.oAuthAuthorizationCode ?? db.oauthAuthorizationCode;
+}
+function getFamilyDelegate(db: any): OAuthTokenFamilyDelegate {
+  return db.oAuthTokenFamily ?? db.oauthTokenFamily;
+}
+function getAccessDelegate(db: any): OAuthAccessTokenDelegate {
+  return db.oAuthAccessToken ?? db.oauthAccessToken;
+}
+function getRefreshDelegate(db: any): OAuthRefreshTokenDelegate {
+  return db.oAuthRefreshToken ?? db.oauthRefreshToken;
+}
+
 /** Prisma-backed OAuth persistence. Only irreversible credential hashes are stored. */
 export class PrismaOAuthStore {
   constructor(private readonly database: OAuthDatabase) {}
 
   async createAuthorizationCode(record: OAuthAuthorizationCodeRecord): Promise<void> {
-    await this.database.oauthAuthorizationCode.create({ data: record });
+    await getCodeDelegate(this.database).create({ data: record });
   }
 
   async consumeAuthorizationCode(codeHash: string, now: Date): Promise<Omit<CodeRow, 'codeHash'> | null> {
     return this.database.$transaction(async (transaction) => {
-      const record = await transaction.oauthAuthorizationCode.findUnique({ where: { codeHash } });
+      const record = await getCodeDelegate(transaction).findUnique({ where: { codeHash } });
       if (!record || record.expiresAt <= now) return null;
-      const claimed = await transaction.oauthAuthorizationCode.deleteMany({ where: { codeHash, expiresAt: { gt: now } } });
+      const claimed = await getCodeDelegate(transaction).deleteMany({ where: { codeHash, expiresAt: { gt: now } } });
       if (claimed.count !== 1) return null;
       return {
         userId: record.userId,
@@ -101,13 +115,13 @@ export class PrismaOAuthStore {
 
   async createTokenFamily(record: OAuthTokenFamilyRecord): Promise<void> {
     await this.database.$transaction(async (transaction) => {
-      await transaction.oauthTokenFamily.create({
+      await getFamilyDelegate(transaction).create({
         data: { id: record.familyId, userId: record.userId, clientId: record.clientId },
       });
-      await transaction.oauthAccessToken.create({
+      await getAccessDelegate(transaction).create({
         data: { tokenHash: record.accessTokenHash, familyId: record.familyId, expiresAt: record.accessExpiresAt },
       });
-      await transaction.oauthRefreshToken.create({
+      await getRefreshDelegate(transaction).create({
         data: { tokenHash: record.refreshTokenHash, familyId: record.familyId, expiresAt: record.refreshExpiresAt },
       });
     });
@@ -115,25 +129,30 @@ export class PrismaOAuthStore {
 
   async rotateRefreshToken(record: OAuthRefreshRotationRecord): Promise<'rotated' | 'reused' | 'invalid'> {
     return this.database.$transaction(async (transaction) => {
-      const token = await transaction.oauthRefreshToken.findUnique({ where: { tokenHash: record.refreshTokenHash } });
+      const token = await getRefreshDelegate(transaction).findUnique({
+        where: { tokenHash: record.refreshTokenHash },
+        include: { family: true },
+      });
       if (!token) return 'invalid';
 
       if (token.consumedAt !== null) {
-        await transaction.oauthTokenFamily.updateMany({
+        await getFamilyDelegate(transaction).updateMany({
           where: { id: token.familyId, revokedAt: null }, data: { revokedAt: record.now },
         });
         return 'reused';
       }
-      if (token.expiresAt <= record.now || token.family.revokedAt !== null) return 'invalid';
+      const family = token.family ?? (await getFamilyDelegate(transaction).findUnique({ where: { id: token.familyId } }));
+      if (!family) return 'invalid';
+      if (token.expiresAt <= record.now || family.revokedAt !== null) return 'invalid';
 
-      const claimed = await transaction.oauthRefreshToken.updateMany({
+      const claimed = await getRefreshDelegate(transaction).updateMany({
         where: { tokenHash: record.refreshTokenHash, consumedAt: null, expiresAt: { gt: record.now } },
         data: { consumedAt: record.now },
       });
       if (claimed.count !== 1) {
-        const current = await transaction.oauthRefreshToken.findUnique({ where: { tokenHash: record.refreshTokenHash } });
+        const current = await getRefreshDelegate(transaction).findUnique({ where: { tokenHash: record.refreshTokenHash } });
         if (current?.consumedAt) {
-          await transaction.oauthTokenFamily.updateMany({
+          await getFamilyDelegate(transaction).updateMany({
             where: { id: current.familyId, revokedAt: null }, data: { revokedAt: record.now },
           });
           return 'reused';
@@ -141,10 +160,10 @@ export class PrismaOAuthStore {
         return 'invalid';
       }
 
-      await transaction.oauthAccessToken.create({
+      await getAccessDelegate(transaction).create({
         data: { tokenHash: record.accessTokenHash, familyId: token.familyId, expiresAt: record.accessExpiresAt },
       });
-      await transaction.oauthRefreshToken.create({
+      await getRefreshDelegate(transaction).create({
         data: { tokenHash: record.nextRefreshTokenHash, familyId: token.familyId, expiresAt: record.refreshExpiresAt },
       });
       return 'rotated';
@@ -158,24 +177,29 @@ export class PrismaOAuthStore {
     expiresAt: Date;
     revokedAt: Date | null;
   } | null> {
-    const token = await this.database.oauthAccessToken.findUnique({ where: { tokenHash: accessTokenHash } });
+    const token = await getAccessDelegate(this.database).findUnique({
+      where: { tokenHash: accessTokenHash },
+      include: { family: true },
+    });
     if (!token) return null;
+    const family = token.family ?? (await getFamilyDelegate(this.database).findUnique({ where: { id: token.familyId } }));
+    if (!family) return null;
     return {
       familyId: token.familyId,
-      userId: token.family.userId,
-      clientId: token.family.clientId,
+      userId: family.userId,
+      clientId: family.clientId,
       expiresAt: token.expiresAt,
-      revokedAt: token.family.revokedAt,
+      revokedAt: family.revokedAt,
     };
   }
 
   async revokeTokenFamilyByTokenHash(tokenHash: string, now: Date): Promise<boolean> {
     return this.database.$transaction(async (transaction) => {
-      const access = await transaction.oauthAccessToken.findUnique({ where: { tokenHash } });
-      const refresh = access ? null : await transaction.oauthRefreshToken.findUnique({ where: { tokenHash } });
+      const access = await getAccessDelegate(transaction).findUnique({ where: { tokenHash } });
+      const refresh = access ? null : await getRefreshDelegate(transaction).findUnique({ where: { tokenHash } });
       const familyId = access?.familyId ?? refresh?.familyId;
       if (!familyId) return false;
-      const result = await transaction.oauthTokenFamily.updateMany({
+      const result = await getFamilyDelegate(transaction).updateMany({
         where: { id: familyId, revokedAt: null }, data: { revokedAt: now },
       });
       return result.count === 1;

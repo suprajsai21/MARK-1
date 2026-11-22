@@ -37,6 +37,14 @@ button,input,textarea{font:inherit;color:inherit} button:focus-visible,input:foc
 .approval-row{display:flex;align-items:flex-start;gap:10px;margin:12px 0 0;padding:11px 12px;border:1px solid var(--line);border-radius:13px;background:var(--paper);font-size:12px;line-height:1.45;cursor:pointer}
 .approval-row input{width:17px;height:17px;margin:1px 0 0;accent-color:var(--moss);flex:none}
 pre.answer-field{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}
+.title-row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px}
+.lang-pill{display:inline-block;padding:3px 8px;border:1px solid var(--line);border-radius:6px;background:var(--paper);color:var(--moss-dark);font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase}
+.code-box,.notes-box{margin-top:10px;border:1px solid var(--line);border-radius:14px;background:var(--paper);overflow:hidden}
+.box-header{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:color-mix(in srgb,var(--raised) 70%,transparent);border-bottom:1px solid var(--line)}
+.box-title{color:var(--soft);font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}
+.copy-pill{padding:4px 8px;border:1px solid var(--line);border-radius:8px;background:var(--raised);color:var(--ink);font-size:11px;font-weight:600;cursor:pointer;transition:background .15s ease}
+.copy-pill:hover{background:var(--pale)}
+.code-text{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:12.5px;line-height:1.5;background:transparent;border:none;border-radius:0;padding:12px}
 .status.error .eyebrow{color:var(--danger)}
 .status:has(.state-pill){display:grid;gap:2px}.status:not(:has(.state-pill)){padding:0;border:0;background:transparent}
 @media(max-width:340px){.sidepanel{padding:14px 12px}.hero{padding:17px}.hero h2{font-size:23px}.card{padding:13px}.action{min-height:44px;padding-inline:12px}}

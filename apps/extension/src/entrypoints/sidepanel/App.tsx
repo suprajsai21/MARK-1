@@ -4,6 +4,7 @@ import { createChromeSecretStore } from '../../background/storage.js';
 import { GeminiProvider } from '../../provider/gemini.js';
 import { SettingsPanel } from './features/settings/SettingsPanel.js';
 import { normalizeCapturedPrompt } from './capture-response.js';
+import { parseAnswer } from '../../platform/answer-parser.js';
 
 export type PanelState =
   | { kind: 'signedOut' }
@@ -43,6 +44,8 @@ export function App({ state, onSignIn, onSignOut, onRetry }: AppProps): JSX.Elem
   const [question, setQuestion] = useState('');
   const [answer, setAnswer] = useState('');
   const [approved, setApproved] = useState(false);
+  const [copiedCode, setCopiedCode] = useState(false);
+  const [copiedNotes, setCopiedNotes] = useState(false);
   const secretStore = createChromeSecretStore({
     get: (keys) => chrome.storage.local.get(keys),
     set: (items) => chrome.storage.local.set(items),
@@ -228,29 +231,115 @@ export function App({ state, onSignIn, onSignOut, onRetry }: AppProps): JSX.Elem
         </section>
       )}
 
-      {current.kind === 'answerReview' && (
-        <section className="card" aria-labelledby="answer-review-heading">
-          <p className="eyebrow">Step 2 · Your review</p>
-          <h3 id="answer-review-heading" className="card-title">A draft to think through</h3>
-          <pre className="answer-field">{answer}</pre>
-          <label className="approval-row">
-            <input type="checkbox" checked={approved} onChange={(event) => setApproved(event.currentTarget.checked)} />
-            <span>I reviewed this answer and approve inserting it into the focused editor.</span>
-          </label>
-          <p className="helper">This only fills the editor you’re focused on. It does not submit or finish your work.</p>
-          <button className="action" type="button" disabled={!approved} onClick={async () => {
-            if (!tabUrl) return;
-            const result = await chrome.runtime.sendMessage({ type: 'INSERT_ANSWER', pageUrl: tabUrl, answer });
-            setCurrent(result?.ok && accessGranted ? { kind: 'ready', entitled: true } : { kind: 'error', message: 'Access is blocked until entitlement is verified.' });
-          }}>Insert into editor</button>
-        </section>
-      )}
+      {current.kind === 'answerReview' && (() => {
+        const parsed = parseAnswer(answer);
+        const codeToInsert = parsed.code || answer;
+        return (
+          <section className="card" aria-labelledby="answer-review-heading">
+            <p className="eyebrow">Step 2 · Your review</p>
+            <div className="title-row">
+              <h3 id="answer-review-heading" className="card-title">A draft to think through</h3>
+              {parsed.hasCodeBlock && <span className="lang-pill">{parsed.language}</span>}
+            </div>
+
+            {parsed.hasCodeBlock ? (
+              <>
+                <div className="code-box">
+                  <div className="box-header">
+                    <span className="box-title">Solution Code</span>
+                    <button
+                      type="button"
+                      className="copy-pill"
+                      onClick={() => {
+                        void navigator.clipboard?.writeText(codeToInsert);
+                        setCopiedCode(true);
+                        setTimeout(() => setCopiedCode(false), 2000);
+                      }}
+                    >
+                      {copiedCode ? '✓ Copied' : '📋 Copy code'}
+                    </button>
+                  </div>
+                  <pre className="answer-field code-text">{codeToInsert}</pre>
+                </div>
+                {parsed.explanation && (
+                  <div className="notes-box">
+                    <div className="box-header">
+                      <span className="box-title">Approach & Walkthrough</span>
+                      <button
+                        type="button"
+                        className="copy-pill"
+                        onClick={() => {
+                          void navigator.clipboard?.writeText(parsed.explanation);
+                          setCopiedNotes(true);
+                          setTimeout(() => setCopiedNotes(false), 2000);
+                        }}
+                      >
+                        {copiedNotes ? '✓ Copied' : '📋 Copy notes'}
+                      </button>
+                    </div>
+                    <pre className="answer-field">{parsed.explanation}</pre>
+                  </div>
+                )}
+              </>
+            ) : (
+              <pre className="answer-field">{answer}</pre>
+            )}
+
+            <label className="approval-row">
+              <input type="checkbox" checked={approved} onChange={(event) => setApproved(event.currentTarget.checked)} />
+              <span>I reviewed this answer and approve inserting it into the focused editor.</span>
+            </label>
+            <p className="helper">This only fills the editor you’re focused on. It does not submit or finish your work.</p>
+            <div className="button-row">
+              <button className="action secondary" type="button" onClick={() => setCurrent({ kind: 'questionReview' })}>Back</button>
+              <button
+                className="action"
+                type="button"
+                disabled={!approved}
+                onClick={async () => {
+                  let inserted = false;
+                  if (tabUrl) {
+                    try {
+                      const result = await chrome.runtime.sendMessage({
+                        type: 'INSERT_ANSWER',
+                        pageUrl: tabUrl,
+                        answer: codeToInsert,
+                      });
+                      inserted = Boolean(result?.ok);
+                    } catch {
+                      inserted = false;
+                    }
+                  }
+                  if (inserted && accessGranted) {
+                    setCurrent({ kind: 'ready', entitled: true });
+                  } else {
+                    try {
+                      await navigator.clipboard?.writeText(codeToInsert);
+                    } catch {
+                      // Clipboard fallback ignore
+                    }
+                    setCurrent({
+                      kind: 'error',
+                      message: 'Could not auto-insert into editor. We copied the code to your clipboard so you can paste it directly!',
+                    });
+                  }
+                }}
+              >
+                Insert into editor
+              </button>
+            </div>
+          </section>
+        );
+      })()}
 
       {current.kind === 'error' && (
         <section className="card" aria-labelledby="retry-heading">
           <p className="eyebrow">Next step</p>
           <h3 className="card-title" id="retry-heading">Try your last action again</h3>
-          <button className="action secondary" type="button" onClick={() => void retry()}>Try again</button>
+          <div className="button-row">
+            <button className="action secondary" type="button" onClick={() => void retry()}>Try again</button>
+            <button className="action" type="button" onClick={() => setCurrent({ kind: 'ready', entitled: true })}>Open study space</button>
+          </div>
         </section>
       )}
       </div>

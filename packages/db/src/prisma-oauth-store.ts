@@ -75,26 +75,59 @@ export type OAuthDatabase = OAuthTransaction & {
   $transaction<T>(callback: (transaction: OAuthTransaction) => Promise<T>): Promise<T>;
 };
 
-// Helper accessors that support both real Prisma client (oAuth*) and test doubles (oauth*)
-function getCodeDelegate(db: any): OAuthAuthorizationCodeDelegate {
-  return db.oAuthAuthorizationCode ?? db.oauthAuthorizationCode;
-}
-function getFamilyDelegate(db: any): OAuthTokenFamilyDelegate {
-  return db.oAuthTokenFamily ?? db.oauthTokenFamily;
-}
-function getAccessDelegate(db: any): OAuthAccessTokenDelegate {
-  return db.oAuthAccessToken ?? db.oauthAccessToken;
-}
-function getRefreshDelegate(db: any): OAuthRefreshTokenDelegate {
-  return db.oAuthRefreshToken ?? db.oauthRefreshToken;
-}
+// Narrow structural sources support both Prisma's oAuth* names and test doubles' oauth* names.
+type OAuthCodeLookupDelegate = Pick<OAuthAuthorizationCodeDelegate, 'findUnique' | 'deleteMany'>;
+type OAuthCodeDelegateSource = {
+  oAuthAuthorizationCode?: OAuthCodeLookupDelegate;
+  oauthAuthorizationCode?: OAuthCodeLookupDelegate;
+};
+type OAuthFamilyDelegateSource = {
+  oAuthTokenFamily?: OAuthTokenFamilyDelegate;
+  oauthTokenFamily?: OAuthTokenFamilyDelegate;
+};
+type OAuthAccessDelegateSource = {
+  oAuthAccessToken?: OAuthAccessTokenDelegate;
+  oauthAccessToken?: OAuthAccessTokenDelegate;
+};
+type OAuthRefreshDelegateSource = {
+  oAuthRefreshToken?: OAuthRefreshTokenDelegate;
+  oauthRefreshToken?: OAuthRefreshTokenDelegate;
+};
 
+function getCodeDelegate(db: OAuthCodeDelegateSource): OAuthCodeLookupDelegate {
+  const delegate = db.oAuthAuthorizationCode ?? db.oauthAuthorizationCode;
+  if (!delegate) {
+    throw new Error('OAuth delegate unavailable: oAuthAuthorizationCode or oauthAuthorizationCode');
+  }
+  return delegate;
+}
+function getFamilyDelegate(db: OAuthFamilyDelegateSource): OAuthTokenFamilyDelegate {
+  const delegate = db.oAuthTokenFamily ?? db.oauthTokenFamily;
+  if (!delegate) {
+    throw new Error('OAuth delegate unavailable: oAuthTokenFamily or oauthTokenFamily');
+  }
+  return delegate;
+}
+function getAccessDelegate(db: OAuthAccessDelegateSource): OAuthAccessTokenDelegate {
+  const delegate = db.oAuthAccessToken ?? db.oauthAccessToken;
+  if (!delegate) {
+    throw new Error('OAuth delegate unavailable: oAuthAccessToken or oauthAccessToken');
+  }
+  return delegate;
+}
+function getRefreshDelegate(db: OAuthRefreshDelegateSource): OAuthRefreshTokenDelegate {
+  const delegate = db.oAuthRefreshToken ?? db.oauthRefreshToken;
+  if (!delegate) {
+    throw new Error('OAuth delegate unavailable: oAuthRefreshToken or oauthRefreshToken');
+  }
+  return delegate;
+}
 /** Prisma-backed OAuth persistence. Only irreversible credential hashes are stored. */
 export class PrismaOAuthStore {
   constructor(private readonly database: OAuthDatabase) {}
 
   async createAuthorizationCode(record: OAuthAuthorizationCodeRecord): Promise<void> {
-    await getCodeDelegate(this.database).create({ data: record });
+    await this.database.oauthAuthorizationCode.create({ data: record });
   }
 
   async consumeAuthorizationCode(codeHash: string, now: Date): Promise<Omit<CodeRow, 'codeHash'> | null> {

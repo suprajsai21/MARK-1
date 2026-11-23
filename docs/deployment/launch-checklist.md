@@ -29,9 +29,9 @@ This runbook tracks the strict operational gates required before public producti
 ## 5. Deployment Infrastructure Gate
 - [x] **Docker Multi-stage Builds:** Container definitions for `apps/api` and `apps/web` (with nginx).
 - [x] **Environment Validation:** Pre-flight validation script `node scripts/release/check-env.mjs`.
-- [ ] **Hosting / Cloud Deployment:** Choose Railway or a Linux VPS, provision a PostgreSQL 16 database (or use the bundled Compose `db` service), and deploy the API + web containers from the repository root using `compose.yaml`.
-  - Configure the production values in the host's secret/environment manager; use `docs/deployment/configuration.md` as the authoritative variable list. Set `NODE_ENV=production`, a strong unique `POSTGRES_PASSWORD`, `WEB_ORIGIN=https://<your-domain>`, and `DATABASE_URL` to the production database. Set Razorpay key ID, key secret, and webhook secret together; register `POST https://<api-domain>/v1/webhooks/razorpay` with the same webhook secret.
-  - Publish the web container on the public HTTPS domain and route `/v1/*` to the API service (or publish the API on a dedicated HTTPS subdomain and set the web/API origins accordingly). Configure the platform's TLS certificate and DNS records; do not expose PostgreSQL publicly.
-  - Run `docker compose config` before deployment, then `docker compose up -d --build`. Verify `GET /healthz` on both the API and web domains, execute the auth/signup and checkout smoke tests, and inspect logs for startup/configuration errors.
-  - Configure persistent storage/backups for PostgreSQL, automated image updates and rollback, uptime/error monitoring, and a documented restore test before public launch.
-  - Browser extension release remains a separate distribution step; package signed/approved browser builds with `corepack pnpm release:browser` and register the production OAuth extension client IDs/redirect URIs.
+- [ ] **Hosting / Cloud Deployment:** Follow [`nelctro-shop-cloudflare.md`](./nelctro-shop-cloudflare.md) for the `nelctro.shop` Cloudflare Tunnel deployment. It uses the existing Compose stack and a same-origin `/v1/*` proxy; no inbound ports are needed.
+  - Set `WEB_ORIGIN=https://nelctro.shop`, `TRUST_PROXY=1`, and `SECURE_COOKIES=1`; configure production mail/OAuth/payment secrets in the host's secret manager. Never commit `.env`.
+  - Configure the Cloudflare Tunnel hostname `nelctro.shop` -> `http://localhost:8080`; bypass CDN caching on `/v1/*` and `/health/*`, and skip WAF challenges on `/v1/webhooks/razorpay`.
+  - Run migrations and `docker compose up -d --build`; verify `https://nelctro.shop/healthz`, `https://nelctro.shop/health/ready`, and `bash scripts/release/smoke.sh https://nelctro.shop`.
+  - Configure PostgreSQL backup/restore, uptime monitoring, automated rollback, and complete a restore test before public launch.
+  - Browser extension release remains separate; package builds with `corepack pnpm release:browser` and register production OAuth client IDs/redirect URIs.

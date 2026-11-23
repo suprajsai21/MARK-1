@@ -1,5 +1,24 @@
 # Operations
 
+## Cloudflare Tunnel deployment (nelctro.shop)
+
+See [`nelctro-shop-cloudflare.md`](./nelctro-shop-cloudflare.md) for one-time setup.
+For each production release:
+
+1. Back up PostgreSQL and verify the backup file is non-empty before migrations.
+2. Apply additive Prisma migrations using the deployment `DIRECT_DATABASE_URL`.
+3. Deploy the API and web services with `docker compose up -d --build`.
+4. Run `bash scripts/release/smoke.sh https://nelctro.shop` from a host with curl.
+5. Confirm `GET /health/ready` is 200 and `/v1/links` returns 401 without a session.
+6. Confirm requests preserve the Cloudflare client IP in API rate-limit logs/metrics.
+7. If assets are stale, purge Cloudflare cache for `/` and static assets only; never
+   cache `/v1/*` or `/health/*`.
+8. Monitor Cloudflare Tunnel health and check Cloudflare WAF events for expected
+   Razorpay deliveries to `/v1/webhooks/razorpay` (the webhook path must bypass
+   browser challenge rules but remains authenticated by Razorpay signature).
+
+The Tunnel is outbound-only; do not open ports 80/443/3000/5432 on the origin host.
+
 ## Deploy order
 
 1. Run database migrations against the branch you are deploying to.

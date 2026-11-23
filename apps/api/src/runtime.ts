@@ -35,6 +35,10 @@ export type RuntimeEnvironment = {
   RAZORPAY_KEY_ID?: string | undefined;
   RAZORPAY_KEY_SECRET?: string | undefined;
   RAZORPAY_WEBHOOK_SECRET?: string | undefined;
+  /** Set to 1/true when running behind Cloudflare or a reverse proxy. */
+  TRUST_PROXY?: string | undefined;
+  /** Set to 1 when browser traffic is HTTPS, including TLS terminated by Cloudflare. */
+  SECURE_COOKIES?: string | undefined;
 };
 
 type EntitlementLookup = (userId: string, productVersionId: string) => Promise<Array<{ productVersionId: string; status: 'active' | 'revoked' }>>;

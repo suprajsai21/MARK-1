@@ -38,6 +38,12 @@ services:
       RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID:-}
       RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET:-}
       RAZORPAY_WEBHOOK_SECRET: ${RAZORPAY_WEBHOOK_SECRET:-}
+      # Trust exactly one proxy hop (nginx/cloudflared) so request.ip is the
+      # real client. The API port is bound to loopback, so no direct public
+      # client can spoof forwarded headers.
+      TRUST_PROXY: ${TRUST_PROXY:-1}
+      # Browser traffic is HTTPS at Cloudflare, so mark session cookies Secure.
+      SECURE_COOKIES: ${SECURE_COOKIES:-1}
     ports:
       - "127.0.0.1:${API_PORT:-3000}:3000"
     depends_on:

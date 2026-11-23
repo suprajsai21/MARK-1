@@ -26,6 +26,7 @@ export type ServerOptions = {
   auth: AuthService;
   allowedOrigin: string;
   rateLimit?: { max: number; windowMs: number };
+  secureCookies?: boolean;
   links?: LinkService;
   linkDatabase?: LinkDatabase;
   /** Approved external verifier. Omitted means account linking is disabled. */
@@ -41,6 +42,12 @@ export type ServerOptions = {
   /** Dependency probe for readiness. Omitted for in-memory test servers. */
   readinessCheck?: () => Promise<void>;
   checkRequiredDependencies?: () => Promise<void>;
+  /**
+   * Fastify trustProxy setting. Required when the API sits behind Cloudflare or
+   * any reverse proxy, so request.ip resolves to the real client and rate
+   * limiting does not collapse every user into one bucket.
+   */
+  trustProxy?: boolean;
 };
 
 /**
@@ -50,7 +57,12 @@ export type ServerOptions = {
  * approved verifier is supplied, linking fails closed.
  */
 export function buildServer(options: ServerOptions): FastifyInstance {
-  const app = Fastify({ logger: false });
+  const app = Fastify({
+    logger: false,
+    // Trust exactly one proxy hop (Cloudflare/nginx) so request.ip is the real
+    // client address instead of the shared edge IP.
+    trustProxy: options.trustProxy ?? false,
+  });
   registerHealthRoutes(app, {
     checkDatabase: options.readinessCheck ?? (async () => { throw new Error('DATABASE_NOT_CONFIGURED'); }),
     checkRequiredDependencies: options.checkRequiredDependencies ?? (async () => {
@@ -155,11 +167,14 @@ const unreachableDatabase = new Proxy({} as LinkDatabase, {
 export function buildConfiguredServer(
   environment: RuntimeEnvironment,
   overrides: RuntimeOverrides = {},
+  serverOptions: Pick<ServerOptions, 'trustProxy'> = {},
 ): FastifyInstance {
   const runtime = createRuntime(environment, overrides);
   const app = buildServer({
     auth: runtime.auth,
     allowedOrigin: runtime.allowedOrigin,
+    ...serverOptions,
+    secureCookies: environment.SECURE_COOKIES === '1',
     ...(runtime.linkDatabase ? { linkDatabase: runtime.linkDatabase } : {}),
     verifier: runtime.verifier,
     subjectHmacSecret: runtime.subjectHmacSecret,

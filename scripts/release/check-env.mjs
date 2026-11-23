@@ -33,4 +33,12 @@ if (process.env.NODE_ENV === 'production') {
       process.exitCode = 1;
     }
   }
+  // Behind Cloudflare the origin is plain HTTP and TLS is terminated at the
+  // edge. Require explicit opt-in so cookies and client IPs are handled safely.
+  for (const name of ['TRUST_PROXY', 'SECURE_COOKIES']) {
+    if (process.env[name]?.trim() !== '1') {
+      process.stderr.write(`Production requires ${name}=1 for the Cloudflare-terminated HTTPS origin.\n`);
+      process.exitCode = 1;
+    }
+  }
 }

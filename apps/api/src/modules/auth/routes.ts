@@ -68,6 +68,8 @@ export function registerAuthRoutes(
     auth: AuthService;
     allowedOrigin: string;
     rateLimit?: { max: number; windowMs: number };
+    /** Set true when TLS terminates at a trusted reverse proxy (e.g. Cloudflare). */
+    secureCookies?: boolean;
   },
 ): void {
   registerAuthRateLimits(app, options.rateLimit ?? { max: 30, windowMs: 60_000 });
@@ -100,7 +102,7 @@ export function registerAuthRoutes(
       const result = await options.auth.login(input);
       const token = /mark1_session=([^;]+)/.exec(result.sessionCookie)?.[1];
       if (token) {
-        reply.header('set-cookie', buildSessionCookie(token));
+        reply.header('set-cookie', buildSessionCookie(token, options.secureCookies ? { secure: true } : {}));
       }
       return reply.send({ user: result.user });
     } catch (error) {
@@ -154,7 +156,10 @@ export function registerAuthRoutes(
     if (token) {
       await options.auth.logout(token);
     }
-    reply.header('set-cookie', buildSessionCookie('', { maxAgeSeconds: 0 }));
+    reply.header('set-cookie', buildSessionCookie('', {
+      maxAgeSeconds: 0,
+      ...(options.secureCookies ? { secure: true } : {}),
+    }));
     return reply.send({ loggedOut: true });
   });
 

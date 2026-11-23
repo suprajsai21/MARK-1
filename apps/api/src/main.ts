@@ -13,6 +13,12 @@ export type StartedServer = {
   close(): Promise<void>;
 };
 
+/**
+ * Trust exactly the immediate reverse proxy only when explicitly enabled.
+ * Do not use `true` for arbitrary public deployments; it would allow clients to
+ * spoof forwarded IP headers. For Cloudflare Tunnel, one hop is cloudflared.
+ */
+
 export function readListenConfig(environment: MainEnvironment): { host: string; port: number } {
   const rawPort = environment.PORT?.trim() || '3000';
   const port = Number(rawPort);
@@ -33,7 +39,7 @@ export function assertRequiredConfig(environment: MainEnvironment): void {
 export async function startServer(environment: MainEnvironment): Promise<StartedServer> {
   assertRequiredConfig(environment);
   const { host, port } = readListenConfig(environment);
-  const app = buildConfiguredServer(environment);
+  const app = buildConfiguredServer(environment, {}, { trustProxy: environment.TRUST_PROXY === '1' });
   await app.listen({ host, port });
 
   return {

@@ -92,6 +92,8 @@ the tunnel route creates it.
   also install an Origin Certificate. With a Tunnel, Cloudflare terminates TLS and
   the tunnel is already encrypted end-to-end, so **Flexible is not needed** — keep
   the zone on Full and let the tunnel carry the encrypted hop.
+- **TLS:** Cloudflare Tunnel encrypts the origin connection. Keep the zone on **Full (strict)** only when an HTTPS origin is configured; for the local HTTP Tunnel service, Cloudflare's edge still serves browser HTTPS and the Tunnel connection itself is encrypted. Avoid Flexible mode for direct-origin deployments because it does not provide end-to-end TLS. Verify login cookies are `Secure` and that login survives navigation.
+- **Always Use HTTPS:** enable it after the Tunnel route is healthy. Enable HSTS only after confirming every required hostname is HTTPS.
 - **Never cache API traffic.** Add a Cache Rule: if `URI Path starts with /v1/`
   then **Bypass cache**. Also bypass `/health/*`.
 - **Allowlist the payment webhook.** Cloudflare Bot Fight Mode / managed challenges

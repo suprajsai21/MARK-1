@@ -147,6 +147,11 @@ export class AuthService {
     return { changed: true };
   }
 
+  async findUserById(userId: string): Promise<AuthUser | null> {
+    const user = await this.options.repository.findUserById(userId);
+    return user ? publicUser(user) : null;
+  }
+
   async authenticateSession(rawToken: string): Promise<AuthUser | null> {
     const now = this.now();
     const session = await this.options.repository.findSession(tokenHash(rawToken), now);

@@ -41,6 +41,15 @@ describe('callback parsing', () => {
     expect(result).toEqual({ code: valid.code });
   });
 
+  it('accepts chrome identity chromiumapp.org callback url', () => {
+    const result = parseCallback(
+      `https://abcdefghijklmnop.chromiumapp.org/oauth/callback?state=${valid.state}&code=${valid.code}`,
+      valid.state,
+    );
+
+    expect(result).toEqual({ code: valid.code });
+  });
+
   it('rejects a state mismatch even when the code is well-formed', () => {
     expect(() => parseCallback(
       `https://extension.invalid/oauth/callback?state=${'x'.repeat(40)}&code=${valid.code}`,

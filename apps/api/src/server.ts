@@ -94,6 +94,21 @@ export function buildServer(options: ServerOptions): FastifyInstance {
     const token = sessionTokenFromRequest(request);
     return token ? options.auth.authenticateSession(token) : null;
   };
+  const authenticateForEntitlement = async (request: Parameters<typeof sessionTokenFromRequest>[0]) => {
+    const authHeader = request.headers.authorization;
+    if (authHeader?.startsWith('Bearer ') && options.oauth) {
+      const rawToken = authHeader.slice(7).trim();
+      try {
+        const { userId } = await options.oauth.authenticateAccessToken(rawToken);
+        const user = await options.auth.findUserById(userId);
+        if (!user || user.role !== 'customer') return null;
+        return user;
+      } catch {
+        return null;
+      }
+    }
+    return authenticate(request);
+  };
   if (options.checkout) {
     registerCheckoutRoutes(app, {
       checkout: options.checkout,
@@ -105,7 +120,7 @@ export function buildServer(options: ServerOptions): FastifyInstance {
     registerWebhookRoutes(app, { secret: options.webhookSecret ?? '', process: (input) => options.webhook!.process(input) });
   }
   if (options.entitlementLookup) {
-    registerEntitlementRoutes(app, { authenticate, getForUser: (userId) => options.entitlementLookup!(userId, 'mark1-v1') });
+    registerEntitlementRoutes(app, { authenticate: authenticateForEntitlement, getForUser: (userId) => options.entitlementLookup!(userId, 'mark1-v1') });
   }
 
   if (options.oauth) {

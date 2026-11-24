@@ -5,6 +5,7 @@ import { MailDashboard } from './features/mail/MailDashboard.js';
 import { MailCallbackScreen } from './features/mail/MailCallbackScreen.js';
 import { CheckoutPage } from './features/checkout/CheckoutPage.js';
 import { PricingPage } from './features/admin/pricing/PricingPage.js';
+import { PracticePage } from './features/practice/PracticePage.js';
 
 type PortalRoute = { pathname: string; search: string };
 type PortalNavigate = (url: string) => void;
@@ -161,6 +162,14 @@ export function CustomerPortal({
           }}
         />
       )}
+      {current.pathname === '/practice' && (
+        <PracticePage
+          onBack={() => {
+            if (navigate) navigate('/');
+            else if (typeof window !== 'undefined') window.location.href = '/';
+          }}
+        />
+      )}
       {session.status === 'authenticated' && current.pathname === '/checkout' && <CheckoutPage api={api} />}
       {current.pathname === '/payment/return' && (
         returnOrderId ? <CheckoutPage api={api} initialOrderId={returnOrderId} /> :
@@ -239,6 +248,12 @@ export function CustomerPortal({
                 </p>
               </section>
 
+              <section aria-labelledby="extension-portal-heading">
+                <h3 id="extension-portal-heading">MARK-1 Learning Assistant (Extension)</h3>
+                <p>Private, user-controlled study assistant sidepanel with Gemini BYOK.</p>
+                <p>Open the extension in Chrome and click &quot;Continue to sign in&quot; to authorize this account.</p>
+              </section>
+
               <section aria-labelledby="mail-portal-heading">
                 <h3 id="mail-portal-heading">MARK-1 MAIL</h3>
                 <p>Manage multiple individually authorized Gmail mailboxes and synchronization settings.</p>
@@ -250,6 +265,20 @@ export function CustomerPortal({
                   }}
                 >
                   Open MARK-1 MAIL
+                </button>
+              </section>
+
+              <section aria-labelledby="practice-portal-heading">
+                <h3 id="practice-portal-heading">Practice Coding Sandbox</h3>
+                <p>Authorized interactive practice problems for hands-on learning with MARK-1 Extension.</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (navigate) navigate('/practice');
+                    else if (typeof window !== 'undefined') window.location.href = '/practice';
+                  }}
+                >
+                  Open Practice Sandbox
                 </button>
               </section>
             </section>
@@ -275,7 +304,8 @@ function isScreenRoute(pathname: string): boolean {
     pathname === '/password/reset' ||
     pathname === '/mail' ||
     pathname === '/mail/callback' ||
-    pathname.startsWith('/mail/')
+    pathname.startsWith('/mail/') ||
+    pathname === '/practice'
   );
 }
 

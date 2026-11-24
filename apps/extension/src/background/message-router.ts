@@ -23,6 +23,8 @@ export type MessageRouterOptions = {
   sessionStore: SessionStore;
   localStorage: LocalStorageArea;
   apiBaseUrl?: string;
+  webBaseUrl?: string;
+  authorizeUrl?: string;
   oauthClientId?: string;
   productVersionId?: string;
   browserAuth?: BrowserAuth;
@@ -41,11 +43,13 @@ export type MessageRouterOptions = {
 
 export function createExtensionMessageRouter(options: MessageRouterOptions) {
   const apiBaseUrl = options.apiBaseUrl?.trim().replace(/\/$/, '');
+  const webBaseUrl = options.webBaseUrl?.trim().replace(/\/$/, '');
   const oauthClientId = options.oauthClientId?.trim();
   const productVersionId = options.productVersionId?.trim();
-  const auth = apiBaseUrl && oauthClientId && productVersionId && options.browserAuth
+  const authorizeUrl = options.authorizeUrl?.trim() || (webBaseUrl ? `${webBaseUrl}/oauth/authorize` : apiBaseUrl ? `${apiBaseUrl}/oauth/authorize` : '');
+  const auth = apiBaseUrl && oauthClientId && productVersionId && options.browserAuth && authorizeUrl
     ? new ExtensionAuth({
-        authorizeUrl: `${apiBaseUrl}/v1/oauth/authorize`,
+        authorizeUrl,
         tokenUrl: `${apiBaseUrl}/v1/oauth/token`,
         clientId: oauthClientId,
         scope: 'openid profile',

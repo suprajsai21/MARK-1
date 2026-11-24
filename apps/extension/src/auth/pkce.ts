@@ -70,7 +70,10 @@ export function buildAuthorizationUrl(input: {
 }
 
 function isExtensionCallbackUrl(url: URL): boolean {
-  return url.protocol === 'https:' && url.hostname === 'extension.invalid';
+  return url.protocol === 'https:' && (
+    url.hostname === 'extension.invalid' ||
+    url.hostname.endsWith('.chromiumapp.org')
+  );
 }
 
 /**

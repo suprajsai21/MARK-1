@@ -2,6 +2,7 @@ import { StrictMode, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { browser } from 'wxt/browser';
 import { App, type PanelState } from './App.js';
+import './sidepanel.css';
 
 async function requestPanelState(type: 'GET_STATE' | 'SIGN_IN' | 'SIGN_OUT'): Promise<unknown> {
   try { return await browser.runtime.sendMessage({ type }); }
